@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
@@ -60,8 +61,10 @@ type AppModel struct {
 }
 
 func NewAppModel() AppModel {
-	start, _ := domain.ParseDate("2026-01-01")
-	end, _ := domain.ParseDate("2026-04-30")
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	end := today
+	start := today.AddDate(-1, 0, 0)
 
 	startInput := textinput.New()
 	startInput.Placeholder = domain.DateLayout
