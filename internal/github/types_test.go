@@ -82,3 +82,61 @@ func TestParseProjectXPFieldsSupportsImplementationAliases(t *testing.T) {
 		t.Fatalf("expected xp final %.1f, got %.1f", want, got)
 	}
 }
+
+func TestParseRepoIssueXPFieldsAppliesSpecialRules(t *testing.T) {
+	fields := map[string]string{
+		"Status":       "Done",
+		"Story Points": "8",
+		"Priority":     "P1",
+		"Due Date":     "2026-04-10",
+	}
+	xpBase, start, end, real, xpFinal := parseRepoIssueXPFields("[Special Tasks for Aleph] Sample", fields)
+	if xpBase == nil || start == nil || end == nil || real == nil || xpFinal == nil {
+		t.Fatal("expected all values for valid repo issue special task")
+	}
+	if got, want := *xpBase, 8.0; got != want {
+		t.Fatalf("expected xp base %.1f, got %.1f", want, got)
+	}
+	if got, want := *xpFinal, 12.0; got != want {
+		t.Fatalf("expected xp final %.1f, got %.1f", want, got)
+	}
+	if got, want := start.Format("2006-01-02"), "2026-04-10"; got != want {
+		t.Fatalf("expected due date mapping %s, got %s", want, got)
+	}
+	if got, want := end.Format("2006-01-02"), "2026-04-10"; got != want {
+		t.Fatalf("expected due date mapping %s, got %s", want, got)
+	}
+	if got, want := real.Format("2006-01-02"), "2026-04-10"; got != want {
+		t.Fatalf("expected due date mapping %s, got %s", want, got)
+	}
+}
+
+func TestParseRepoIssueXPFieldsRequiresDoneStatus(t *testing.T) {
+	fields := map[string]string{
+		"Status":       "In Progress",
+		"Story Points": "8",
+		"Priority":     "P1",
+		"Due Date":     "2026-04-10",
+	}
+	xpBase, start, end, real, xpFinal := parseRepoIssueXPFields("[Special Tasks for Aleph] Sample", fields)
+	if xpBase != nil || start != nil || end != nil || real != nil || xpFinal != nil {
+		t.Fatal("expected nil values when status is not done")
+	}
+}
+
+func TestParseRepoIssueXPFieldsRequiresPrefixAndKnownPriority(t *testing.T) {
+	fields := map[string]string{
+		"Status":       "Done",
+		"Story Points": "5",
+		"Priority":     "P9",
+		"Due Date":     "2026-04-10",
+	}
+	xpBase, start, end, real, xpFinal := parseRepoIssueXPFields("Regular issue", fields)
+	if xpBase != nil || start != nil || end != nil || real != nil || xpFinal != nil {
+		t.Fatal("expected nil values when title prefix does not match")
+	}
+	xpBase, start, end, real, xpFinal = parseRepoIssueXPFields("[Special Tasks for Aleph] Sample", fields)
+	if xpBase != nil || start != nil || end != nil || real != nil || xpFinal != nil {
+		t.Fatal("expected nil values for unknown priority")
+	}
+}

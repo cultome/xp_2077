@@ -265,6 +265,20 @@ func (c *Client) FetchRepoIssues(ctx context.Context, owner, repo string) ([]Rep
 			return nil, nil, fmt.Errorf("decode repo issues response: %w", err)
 		}
 
+		issueNodeIDs := make([]string, 0, len(items))
+		for _, issueDTO := range items {
+			if issueDTO.isPullRequest() {
+				continue
+			}
+			if strings.TrimSpace(issueDTO.NodeID) != "" {
+				issueNodeIDs = append(issueNodeIDs, strings.TrimSpace(issueDTO.NodeID))
+			}
+		}
+		projectFieldsByIssueNodeID, err := c.fetchProjectFieldsForIssueNodeIDs(ctx, issueNodeIDs)
+		if err != nil {
+			return nil, nil, err
+		}
+
 		for _, issueDTO := range items {
 			if issueDTO.isPullRequest() {
 				continue
@@ -273,7 +287,7 @@ func (c *Client) FetchRepoIssues(ctx context.Context, owner, repo string) ([]Rep
 			if err != nil {
 				return nil, nil, fmt.Errorf("marshal repo issue payload: %w", err)
 			}
-			n := normalizeRepoIssue(issueDTO, owner, repo)
+			n := normalizeRepoIssue(issueDTO, owner, repo, projectFieldsByIssueNodeID[issueDTO.NodeID])
 			rawRecords = append(rawRecords, RepoIssueRawRecord{
 				IssueNodeID:        n.IssueNodeID,
 				IssueNumber:        n.IssueNumber,
@@ -291,6 +305,126 @@ func (c *Client) FetchRepoIssues(ctx context.Context, owner, repo string) ([]Rep
 	}
 
 	return rawRecords, normalized, nil
+}
+
+func (c *Client) fetchProjectFieldsForIssueNodeIDs(ctx context.Context, issueNodeIDs []string) (map[string]map[string]string, error) {
+	if len(issueNodeIDs) == 0 {
+		return map[string]map[string]string{}, nil
+	}
+	const query = `
+query IssueProjectFields($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    __typename
+    ... on Issue {
+      id
+      projectItems(first: 20) {
+        nodes {
+          fieldValues(first: 50) {
+            nodes {
+              __typename
+              ... on ProjectV2ItemFieldTextValue {
+                text
+                field { ... on ProjectV2FieldCommon { name } }
+              }
+              ... on ProjectV2ItemFieldNumberValue {
+                number
+                field { ... on ProjectV2FieldCommon { name } }
+              }
+              ... on ProjectV2ItemFieldDateValue {
+                date
+                field { ... on ProjectV2FieldCommon { name } }
+              }
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field { ... on ProjectV2FieldCommon { name } }
+              }
+              ... on ProjectV2ItemFieldIterationValue {
+                title
+                field { ... on ProjectV2FieldCommon { name } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`
+	requestBody, err := json.Marshal(map[string]any{
+		"query": query,
+		"variables": map[string]any{
+			"ids": issueNodeIDs,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal issue project fields graphql request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubAPIBase+"/graphql", bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("build issue project fields graphql request: %w", err)
+	}
+	c.setCommonHeaders(req)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute issue project fields graphql request: %w", err)
+	}
+	responseBody, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read issue project fields graphql response: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close issue project fields graphql response body: %w", closeErr)
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("issue project fields graphql request failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
+	}
+
+	type graphResponse struct {
+		Data struct {
+			Nodes []struct {
+				TypeName     string `json:"__typename"`
+				ID           string `json:"id"`
+				ProjectItems struct {
+					Nodes []struct {
+						FieldValues struct {
+							Nodes []projectFieldValueDTO `json:"nodes"`
+						} `json:"fieldValues"`
+					} `json:"nodes"`
+				} `json:"projectItems"`
+			} `json:"nodes"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	var parsed graphResponse
+	if err := json.Unmarshal(responseBody, &parsed); err != nil {
+		return nil, fmt.Errorf("decode issue project fields graphql response: %w", err)
+	}
+	if len(parsed.Errors) > 0 {
+		return nil, fmt.Errorf("issue project fields graphql error: %s", parsed.Errors[0].Message)
+	}
+
+	result := make(map[string]map[string]string, len(parsed.Data.Nodes))
+	for _, node := range parsed.Data.Nodes {
+		if node.TypeName != "Issue" || strings.TrimSpace(node.ID) == "" {
+			continue
+		}
+		fields := map[string]string{}
+		for _, projectItem := range node.ProjectItems.Nodes {
+			itemFields := mapProjectFields(projectItem.FieldValues.Nodes)
+			for key, value := range itemFields {
+				if _, exists := fields[key]; !exists {
+					fields[key] = value
+				}
+			}
+		}
+		result[node.ID] = fields
+	}
+	return result, nil
 }
 
 func (c *Client) setCommonHeaders(req *http.Request) {

@@ -108,6 +108,35 @@ func TestSQLiteRepositoryReturnsLeaderboardAndTasks(t *testing.T) {
 			UpdatedAt:          updatedAt,
 			ClosedAt:           &updatedAt,
 		},
+		{
+			Source:             gh.SourceRepoIssue,
+			SourceRecordID:     "I_2",
+			IssueNodeID:        "I_2",
+			IssueNumber:        102,
+			RepositoryOwner:    "aleph-ri",
+			RepositoryName:     "advance",
+			RepositoryFullName: "aleph-ri/advance",
+			Title:              "[Special Tasks for Aleph] Data sync",
+			State:              "open",
+			URL:                "https://github.com/aleph-ri/advance/issues/102",
+			IssueBody:          "Repo issue enriched from project fields",
+			AuthorLogin:        "owner_user",
+			AssigneeLogins:     []string{"alice"},
+			Labels:             []string{"ops"},
+			ProjectFields: map[string]string{
+				"Status":       "Done",
+				"Story Points": "10",
+				"Priority":     "P0",
+				"Due Date":     "2026-01-10",
+			},
+			XPBase:           floatPtr(10),
+			PlannedStartDate: timePtr(mustDate(t, "2026-01-10")),
+			PlannedEndDate:   timePtr(mustDate(t, "2026-01-10")),
+			RealEndDate:      timePtr(mustDate(t, "2026-01-10")),
+			XPFinal:          floatPtr(20),
+			CreatedAt:        createdAt,
+			UpdatedAt:        updatedAt,
+		},
 	}
 	if err := store.UpsertNormalized(ctx, records); err != nil {
 		t.Fatalf("upsert normalized: %v", err)
@@ -125,7 +154,7 @@ func TestSQLiteRepositoryReturnsLeaderboardAndTasks(t *testing.T) {
 	if len(leaderboard) != 1 {
 		t.Fatalf("expected one leaderboard row, got %d", len(leaderboard))
 	}
-	if leaderboard[0].Login != "alice" || leaderboard[0].XP != 120.0 {
+	if leaderboard[0].Login != "alice" || leaderboard[0].XP != 140.0 {
 		t.Fatalf("unexpected leaderboard row: %+v", leaderboard[0])
 	}
 
@@ -133,8 +162,8 @@ func TestSQLiteRepositoryReturnsLeaderboardAndTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tasks query: %v", err)
 	}
-	if len(tasks) != 1 {
-		t.Fatalf("expected one task row, got %d", len(tasks))
+	if len(tasks) != 2 {
+		t.Fatalf("expected two task rows, got %d", len(tasks))
 	}
 	if tasks[0].IssueBody == "" {
 		t.Fatal("expected issue body to be populated")
@@ -156,6 +185,16 @@ func TestSQLiteRepositoryReturnsLeaderboardAndTasks(t *testing.T) {
 	if task.ID != "I_1" || task.XP != 120.0 {
 		t.Fatalf("unexpected task by id: %+v", task)
 	}
+}
+
+func floatPtr(value float64) *float64 {
+	v := value
+	return &v
+}
+
+func timePtr(value time.Time) *time.Time {
+	v := value
+	return &v
 }
 
 func mustDate(t *testing.T, value string) time.Time {

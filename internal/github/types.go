@@ -15,6 +15,8 @@ const (
 	SourceRepoIssue SourceKind = "repo_issue"
 )
 
+const specialTasksAlephPrefix = "[Special Tasks for Aleph] "
+
 type ProjectItemRawRecord struct {
 	ProjectItemID      string
 	IssueNodeID        string
@@ -179,7 +181,7 @@ func (issue repoIssueDTO) isPullRequest() bool {
 	return issue.PullRequest != nil
 }
 
-func normalizeRepoIssue(issue repoIssueDTO, owner, repo string) NormalizedIssue {
+func normalizeRepoIssue(issue repoIssueDTO, owner, repo string, projectFields map[string]string) NormalizedIssue {
 	assignees := make([]string, 0, len(issue.Assignees))
 	for _, entry := range issue.Assignees {
 		if strings.TrimSpace(entry.Login) != "" {
@@ -198,6 +200,10 @@ func normalizeRepoIssue(issue repoIssueDTO, owner, repo string) NormalizedIssue 
 	if issue.User != nil {
 		authorLogin = issue.User.Login
 	}
+	if projectFields == nil {
+		projectFields = map[string]string{}
+	}
+	xpBase, plannedStart, plannedEnd, realEnd, xpFinal := parseRepoIssueXPFields(issue.Title, projectFields)
 
 	return NormalizedIssue{
 		Source:             SourceRepoIssue,
@@ -214,7 +220,12 @@ func normalizeRepoIssue(issue repoIssueDTO, owner, repo string) NormalizedIssue 
 		AuthorLogin:        authorLogin,
 		AssigneeLogins:     assignees,
 		Labels:             labels,
-		ProjectFields:      map[string]string{},
+		ProjectFields:      projectFields,
+		XPBase:             xpBase,
+		PlannedStartDate:   plannedStart,
+		PlannedEndDate:     plannedEnd,
+		RealEndDate:        realEnd,
+		XPFinal:            xpFinal,
 		CreatedAt:          issue.CreatedAt,
 		UpdatedAt:          issue.UpdatedAt,
 		ClosedAt:           issue.ClosedAt,
@@ -280,6 +291,60 @@ func parseProjectXPFields(fields map[string]string) (xpBase *float64, plannedSta
 	finalXP = math.Round(finalXP*10) / 10
 
 	return floatPtr(parsedXP), timePtr(startDate), timePtr(endDate), timePtr(realDate), floatPtr(finalXP)
+}
+
+func parseRepoIssueXPFields(title string, fields map[string]string) (xpBase *float64, plannedStart, plannedEnd, realEnd *time.Time, xpFinal *float64) {
+	if !hasSpecialTasksAlephPrefix(title) {
+		return nil, nil, nil, nil, nil
+	}
+	if !isDoneFromProjectFields(fields) {
+		return nil, nil, nil, nil, nil
+	}
+	storyPointsText, hasStoryPoints := getFirstFieldValue(fields, []string{"story points"})
+	priorityText, hasPriority := getFirstFieldValue(fields, []string{"priority"})
+	dueDateText, hasDueDate := getFirstFieldValue(fields, []string{"due date"})
+	if !hasStoryPoints || !hasPriority || !hasDueDate {
+		return nil, nil, nil, nil, nil
+	}
+	parsedBase, err := strconv.ParseFloat(strings.TrimSpace(storyPointsText), 64)
+	if err != nil {
+		return nil, nil, nil, nil, nil
+	}
+	multiplier, ok := priorityMultiplier(priorityText)
+	if !ok {
+		return nil, nil, nil, nil, nil
+	}
+	dueDate, err := parseProjectDate(dueDateText)
+	if err != nil {
+		return nil, nil, nil, nil, nil
+	}
+	finalXP := math.Round((parsedBase*multiplier)*10) / 10
+	return floatPtr(parsedBase), timePtr(dueDate), timePtr(dueDate), timePtr(dueDate), floatPtr(finalXP)
+}
+
+func hasSpecialTasksAlephPrefix(title string) bool {
+	return strings.HasPrefix(strings.TrimSpace(title), specialTasksAlephPrefix)
+}
+
+func isDoneFromProjectFields(fields map[string]string) bool {
+	status, ok := getFirstFieldValue(fields, []string{"status"})
+	if !ok {
+		return false
+	}
+	return normalizeFieldName(status) == "done"
+}
+
+func priorityMultiplier(priority string) (float64, bool) {
+	switch strings.ToUpper(strings.TrimSpace(priority)) {
+	case "P0":
+		return 2, true
+	case "P1":
+		return 1.5, true
+	case "P2":
+		return 1, true
+	default:
+		return 0, false
+	}
 }
 
 func parseProjectDate(value string) (time.Time, error) {

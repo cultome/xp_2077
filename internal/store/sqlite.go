@@ -339,7 +339,7 @@ WITH task_rows AS (
 		i.xp_final AS xp_final,
 		julianday(i.real_end_date) - julianday(i.planned_end_date) AS delay_days
 	FROM issues_normalized i, json_each(i.assignees_json)
-	WHERE i.source = 'project_v2'
+	WHERE i.source IN ('project_v2', 'repo_issue')
 	  AND i.xp_final IS NOT NULL
 	  AND i.real_end_date IS NOT NULL
 	  AND i.real_end_date >= ?
@@ -396,7 +396,7 @@ SELECT
 	COALESCE(i.updated_at, ''),
 	i.closed_at
 FROM issues_normalized i
-WHERE i.source = 'project_v2'
+WHERE i.source IN ('project_v2', 'repo_issue')
   AND i.xp_final IS NOT NULL
   AND i.real_end_date IS NOT NULL
   AND i.real_end_date >= ?
