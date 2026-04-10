@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cultome/xp_2077/internal/env"
 )
 
@@ -37,5 +38,35 @@ func TestAppRouteTransitions(t *testing.T) {
 	}
 	if len(m.users) == 0 {
 		t.Fatal("expected leaderboard users to be loaded")
+	}
+}
+
+func TestDetailToIssueNavigation(t *testing.T) {
+	m := NewAppModel()
+	m.route = routeHome
+	m.focusIndex = 2
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(AppModel)
+	if m.route != routeDetail {
+		t.Fatalf("expected routeDetail, got %v", m.route)
+	}
+	if len(m.detailTasks) == 0 {
+		t.Fatal("expected detail tasks to be loaded")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(AppModel)
+	if m.route != routeIssueDetail {
+		t.Fatalf("expected routeIssueDetail, got %v", m.route)
+	}
+	if m.issueTask.ID == "" {
+		t.Fatal("expected selected issue task to be set")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(AppModel)
+	if m.route != routeDetail {
+		t.Fatalf("expected routeDetail after esc, got %v", m.route)
 	}
 }

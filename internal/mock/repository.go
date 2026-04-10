@@ -22,6 +22,7 @@ func NewRepository(seed int64) *Repository {
 		"acid_loop", "infra_ninja", "chrome_shade", "turbo_nomad",
 	}
 	projects := []string{"CYBER-OPS", "NEON-API", "OMEGA-CORE", "EDGE-NET", "PIXEL-DRIVE"}
+	labels := []string{"bug", "enhancement", "documentation", "high-priority", "frontend", "backend", "infra"}
 	base := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
 
 	tasks := make(map[string][]domain.TaskXP, len(users))
@@ -32,13 +33,39 @@ func NewRepository(seed int64) *Repository {
 			planned := base.AddDate(0, 0, offsetDays)
 			real := planned.AddDate(0, 0, rnd.Intn(4)-1)
 			xp := 15 + rnd.Intn(90)
+			issueNumber := 1000 + rnd.Intn(9000)
+			issueState := "open"
+			var issueClosedAt *time.Time
+			if rnd.Intn(100) < 40 {
+				issueState = "closed"
+				closed := real.AddDate(0, 0, rnd.Intn(3))
+				issueClosedAt = &closed
+			}
+			issueLabels := []string{
+				labels[rnd.Intn(len(labels))],
+				labels[rnd.Intn(len(labels))],
+			}
+			assignees := []string{user}
+			if rnd.Intn(100) < 35 {
+				assignees = append(assignees, users[rnd.Intn(len(users))])
+			}
 			userTasks = append(userTasks, domain.TaskXP{
-				Description: fmt.Sprintf("Task %02d pipeline tuning", i+1),
-				PlannedDate: planned,
-				RealDate:    real,
-				Project:     projects[rnd.Intn(len(projects))],
-				ID:          fmt.Sprintf("%s-%03d", user[:4], i+1),
-				XP:          xp,
+				Description:         fmt.Sprintf("Task %02d pipeline tuning", i+1),
+				PlannedDate:         planned,
+				RealDate:            real,
+				Project:             projects[rnd.Intn(len(projects))],
+				ID:                  fmt.Sprintf("%s-%03d", user[:4], i+1),
+				XP:                  xp,
+				IssueNumber:         issueNumber,
+				IssueState:          issueState,
+				IssueURL:            fmt.Sprintf("https://github.com/cultome/%s/issues/%d", "xp_2077", issueNumber),
+				IssueAuthorLogin:    user,
+				IssueAssigneeLogins: assignees,
+				IssueLabels:         issueLabels,
+				IssueBody:           fmt.Sprintf("### Context\nTune flow for %s.\n\n### Acceptance criteria\n- Keep XP stable\n- Improve reliability for batch %02d\n", projects[rnd.Intn(len(projects))], i+1),
+				IssueCreatedAt:      planned.AddDate(0, 0, -2),
+				IssueUpdatedAt:      real,
+				IssueClosedAt:       issueClosedAt,
 			})
 		}
 		tasks[user] = userTasks
@@ -51,12 +78,25 @@ func (r *Repository) Leaderboard(dateRange domain.DateRange) []domain.UserXP {
 	result := make([]domain.UserXP, 0, len(r.users))
 	for _, user := range r.users {
 		total := 0
+		ticketCount := 0
+		delayDaysTotal := 0.0
 		for _, task := range r.tasks[user] {
 			if dateRange.Contains(task.RealDate) {
 				total += task.XP
+				ticketCount++
+				delayDaysTotal += task.RealDate.Sub(task.PlannedDate).Hours() / 24
 			}
 		}
-		result = append(result, domain.UserXP{Login: user, XP: total})
+		avgDelayDays := 0.0
+		if ticketCount > 0 {
+			avgDelayDays = delayDaysTotal / float64(ticketCount)
+		}
+		result = append(result, domain.UserXP{
+			Login:        user,
+			XP:           total,
+			TicketCount:  ticketCount,
+			AvgDelayDays: avgDelayDays,
+		})
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].XP == result[j].XP {

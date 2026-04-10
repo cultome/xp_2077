@@ -23,6 +23,7 @@ const (
 	routeLoading
 	routeHome
 	routeDetail
+	routeIssueDetail
 )
 
 const splashFrames = 35
@@ -58,6 +59,7 @@ type AppModel struct {
 	detailUser  domain.UserXP
 	detailTasks []domain.TaskXP
 	detailTable table.Model
+	issueTask   domain.TaskXP
 }
 
 func NewAppModel() AppModel {
@@ -80,8 +82,10 @@ func NewAppModel() AppModel {
 
 	userTable := table.New(
 		table.WithColumns([]table.Column{
-			{Title: "USER", Width: 24},
+			{Title: "US3R", Width: 24},
 			{Title: "XP", Width: 8},
+			{Title: "1SSU3S", Width: 8},
+			{Title: "4VG D(+/-)", Width: 12},
 		}),
 		table.WithRows([]table.Row{}),
 		table.WithFocused(true),
@@ -94,10 +98,10 @@ func NewAppModel() AppModel {
 
 	detailTable := table.New(
 		table.WithColumns([]table.Column{
-			{Title: "DESCRIPCION", Width: 22},
-			{Title: "FECHA PLANEADA", Width: 14},
-			{Title: "FECHA REAL", Width: 12},
-			{Title: "PROYECTO", Width: 12},
+			{Title: "D3SCR1PC10N", Width: 22},
+			{Title: "PL4N D4T3", Width: 14},
+			{Title: "R34L D4T3", Width: 12},
+			{Title: "PR0Y3CT0", Width: 12},
 			{Title: "ID", Width: 10},
 			{Title: "XP", Width: 6},
 		}),
@@ -171,6 +175,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleHomeKeys(typed)
 		case routeDetail:
 			return m.handleDetailKeys(typed)
+		case routeIssueDetail:
+			return m.handleIssueDetailKeys(typed)
 		default:
 			return m, nil
 		}
@@ -190,6 +196,8 @@ func (m AppModel) View() string {
 		content = m.viewLoading()
 	case routeDetail:
 		content = m.viewDetail()
+	case routeIssueDetail:
+		content = m.viewIssueDetail()
 	default:
 		content = m.viewHome()
 	}
@@ -259,9 +267,24 @@ func (m *AppModel) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.route = routeHome
 		return *m, nil
 	}
+	if key.Matches(msg, m.keys.Enter) {
+		idx := m.detailTable.Cursor()
+		if idx >= 0 && idx < len(m.detailTasks) {
+			m.issueTask = m.detailTasks[idx]
+			m.route = routeIssueDetail
+		}
+		return *m, nil
+	}
 	var cmd tea.Cmd
 	m.detailTable, cmd = m.detailTable.Update(msg)
 	return *m, cmd
+}
+
+func (m *AppModel) handleIssueDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if key.Matches(msg, m.keys.Back) {
+		m.route = routeDetail
+	}
+	return *m, nil
 }
 
 func (m *AppModel) refreshInputFocus() {
@@ -289,7 +312,12 @@ func (m *AppModel) refreshLeaderboard() {
 	m.users = m.repo.Leaderboard(m.dateRange)
 	rows := make([]table.Row, 0, len(m.users))
 	for _, user := range m.users {
-		rows = append(rows, table.Row{user.Login, strconv.Itoa(user.XP)})
+		rows = append(rows, table.Row{
+			user.Login,
+			strconv.Itoa(user.XP),
+			strconv.Itoa(user.TicketCount),
+			fmt.Sprintf("%+.1f", user.AvgDelayDays),
+		})
 	}
 	m.userTable.SetRows(rows)
 	if len(rows) > 0 && m.userTable.Cursor() >= len(rows) {

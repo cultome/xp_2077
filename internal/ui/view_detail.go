@@ -22,7 +22,7 @@ func (m AppModel) viewDetail() string {
 		"",
 		m.styles.Panel.Render(m.detailTable.View()),
 		"",
-		m.styles.Footer.Render("UP/DOWN:n4v  ESC:b4ck  Q:qu1t"),
+		m.styles.Footer.Render("UP/DOWN:n4v  ENTER:1ssu3  ESC:b4ck  Q:qu1t"),
 		m.styles.Subtle.Render(terminalTicker(m.frame, "us3r log op3n")),
 	}
 	return m.screen(lines)

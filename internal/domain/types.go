@@ -15,17 +15,29 @@ type DateRange struct {
 }
 
 type UserXP struct {
-	Login string
-	XP    int
+	Login        string
+	XP           int
+	TicketCount  int
+	AvgDelayDays float64
 }
 
 type TaskXP struct {
-	Description string
-	PlannedDate time.Time
-	RealDate    time.Time
-	Project     string
-	ID          string
-	XP          int
+	Description         string
+	PlannedDate         time.Time
+	RealDate            time.Time
+	Project             string
+	ID                  string
+	XP                  int
+	IssueNumber         int
+	IssueState          string
+	IssueURL            string
+	IssueAuthorLogin    string
+	IssueAssigneeLogins []string
+	IssueLabels         []string
+	IssueBody           string
+	IssueCreatedAt      time.Time
+	IssueUpdatedAt      time.Time
+	IssueClosedAt       *time.Time
 }
 
 func ParseDate(value string) (time.Time, error) {
