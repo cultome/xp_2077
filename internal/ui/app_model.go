@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -149,7 +147,7 @@ func NewAppModel(repo domain.Repository, skipExtract bool) AppModel {
 		route:       routeSplash,
 		keys:        newKeyMap(),
 		styles:      newStyles(),
-		requiredEnv: []string{"GITHUB_TOKEN", "GITHUB_REPO", "GITHUB_PROJECT_NUMBER"},
+		requiredEnv: []string{"GITHUB_TOKEN"},
 		extractCfg:  extract.ConfigFromEnv(),
 		repo:        repo,
 		startInput:  startInput,
@@ -549,15 +547,6 @@ func (m *AppModel) resizeTables() {
 func checkEnvCmd(required []string) tea.Cmd {
 	return func() tea.Msg {
 		report := env.Check(required)
-		ownerOrOrgPresent := strings.TrimSpace(os.Getenv("GITHUB_OWNER")) != "" || strings.TrimSpace(os.Getenv("GITHUB_ORG")) != ""
-		report.Statuses = append(report.Statuses, env.RequirementStatus{
-			Name:    "GITHUB_OWNER | GITHUB_ORG",
-			Present: ownerOrOrgPresent,
-			Hint:    "export GITHUB_OWNER=... (or GITHUB_ORG=...)",
-		})
-		if !ownerOrOrgPresent {
-			report.Missing = true
-		}
 		return envCheckedMsg{report: report}
 	}
 }

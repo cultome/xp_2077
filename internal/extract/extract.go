@@ -20,23 +20,21 @@ type Config struct {
 	OutputDB      string
 }
 
+const (
+	DefaultOwner         = "aleph-ri"
+	DefaultRepo          = "advance"
+	DefaultProjectNumber = 12
+)
+
 func ConfigFromEnv() Config {
-	owner := firstNonEmpty(os.Getenv("GITHUB_OWNER"), os.Getenv("GITHUB_ORG"))
-	repo := strings.TrimSpace(os.Getenv("GITHUB_REPO"))
-	project := envInt("GITHUB_PROJECT_NUMBER", 0)
 	token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 	outputDB := firstNonEmpty(os.Getenv("OUTPUT_DB"), "./tmp/github_extract.db")
 
-	if repoOwner, repoName, ok := splitRepoRef(repo); ok {
-		owner = repoOwner
-		repo = repoName
-	}
-
 	return Config{
 		Token:         token,
-		Owner:         owner,
-		Repo:          repo,
-		ProjectNumber: project,
+		Owner:         DefaultOwner,
+		Repo:          DefaultRepo,
+		ProjectNumber: DefaultProjectNumber,
 		OutputDB:      strings.TrimSpace(outputDB),
 	}
 }
@@ -44,15 +42,6 @@ func ConfigFromEnv() Config {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Token) == "" {
 		return fmt.Errorf("token is required (GITHUB_TOKEN)")
-	}
-	if strings.TrimSpace(c.Owner) == "" {
-		return fmt.Errorf("owner is required (GITHUB_OWNER or GITHUB_ORG)")
-	}
-	if strings.TrimSpace(c.Repo) == "" {
-		return fmt.Errorf("repo is required (GITHUB_REPO)")
-	}
-	if c.ProjectNumber <= 0 {
-		return fmt.Errorf("project number must be > 0 (GITHUB_PROJECT_NUMBER)")
 	}
 	if strings.TrimSpace(c.OutputDB) == "" {
 		return fmt.Errorf("db path is required (OUTPUT_DB)")
@@ -235,29 +224,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func envInt(name string, fallback int) int {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return fallback
-	}
-	var parsed int
-	if _, err := fmt.Sscanf(raw, "%d", &parsed); err != nil {
-		return fallback
-	}
-	return parsed
-}
-
-func splitRepoRef(value string) (owner string, repo string, ok bool) {
-	parts := strings.Split(strings.TrimSpace(value), "/")
-	if len(parts) != 2 {
-		return "", "", false
-	}
-	owner = strings.TrimSpace(parts[0])
-	repo = strings.TrimSpace(parts[1])
-	if owner == "" || repo == "" {
-		return "", "", false
-	}
-	return owner, repo, true
 }

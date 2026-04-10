@@ -4,10 +4,8 @@ BIN_DIR := bin
 APP_BIN := $(BIN_DIR)/$(APP_NAME)
 EXTRACTOR_BIN := $(BIN_DIR)/$(EXTRACTOR_NAME)
 
-# Variables para ejecutar el extractor (pueden sobreescribirse al invocar make).
-OWNER ?= $(or $(GITHUB_OWNER),$(GITHUB_ORG))
-REPO ?= $(GITHUB_REPO)
-PROJECT ?= $(GITHUB_PROJECT_NUMBER)
+# Variables para ejecutar el extractor.
+# El contexto GitHub (owner/repo/project) está fijo en código.
 OUTPUT_DB ?= ./tmp/github_extract.db
 
 .PHONY: help build build-app build-extractor run run-extractor test fmt clean
@@ -24,7 +22,7 @@ help:
 	@echo "  make clean            - Elimina artefactos generados"
 	@echo ""
 	@echo "Variables run-extractor:"
-	@echo "  OWNER=<owner> REPO=<repo> PROJECT=<num> OUTPUT_DB=<ruta>"
+	@echo "  OUTPUT_DB=<ruta>"
 
 build: build-app build-extractor
 
@@ -41,9 +39,9 @@ run:
 
 run-extractor:
 	go run ./cmd/github_extract \
-		-owner "$(OWNER)" \
-		-repo "$(REPO)" \
-		-project "$(PROJECT)" \
+		-owner "aleph-ri" \
+		-repo "advance" \
+		-project "12" \
 		-db "$(OUTPUT_DB)"
 
 test:

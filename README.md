@@ -43,22 +43,25 @@ Fórmula:
 ### Variables de entorno
 
 - `GITHUB_TOKEN` (requerida)
-- `GITHUB_OWNER` o `GITHUB_ORG` (requerida)
-- `GITHUB_REPO` (requerida, acepta `repo` o `owner/repo`)
-- `GITHUB_PROJECT_NUMBER` (requerida, número de Project v2)
 - `OUTPUT_DB` (opcional, default `./tmp/github_extract.db`)
+
+El extractor usa configuración fija de GitHub:
+
+- owner/org: `aleph-ri`
+- repo: `advance`
+- project number: `12`
 
 ### Ejecutar
 
 ```bash
 go run ./cmd/github_extract \
-  -owner "$GITHUB_OWNER" \
-  -repo "$GITHUB_REPO" \
-  -project "$GITHUB_PROJECT_NUMBER" \
+  -owner "aleph-ri" \
+  -repo "advance" \
+  -project "12" \
   -db "${OUTPUT_DB:-./tmp/github_extract.db}"
 ```
 
-También puedes omitir flags y usar variables de entorno.
+También puedes omitir esos flags y usar los defaults fijos en código.
 
 ## Ejecutar cliente TUI sin extracción
 

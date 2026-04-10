@@ -4,9 +4,9 @@ import "testing"
 
 func TestCheckRequirements(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "abc")
-	t.Setenv("GITHUB_ORG", "")
+	t.Setenv("ANOTHER_REQUIRED_VAR", "")
 
-	report := Check([]string{"GITHUB_TOKEN", "GITHUB_ORG"})
+	report := Check([]string{"GITHUB_TOKEN", "ANOTHER_REQUIRED_VAR"})
 	if !report.Missing {
 		t.Fatal("expected missing requirements")
 	}

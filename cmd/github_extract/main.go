@@ -42,14 +42,15 @@ type Config struct {
 }
 
 func loadConfig() Config {
-	defaultOwner := firstNonEmpty(os.Getenv("GITHUB_OWNER"), os.Getenv("GITHUB_ORG"))
-	defaultRepo := os.Getenv("GITHUB_REPO")
+	defaultOwner := extract.DefaultOwner
+	defaultRepo := extract.DefaultRepo
+	defaultProject := extract.DefaultProjectNumber
 	defaultToken := os.Getenv("GITHUB_TOKEN")
 	defaultDB := firstNonEmpty(os.Getenv("OUTPUT_DB"), "./tmp/github_extract.db")
 
 	owner := flag.String("owner", defaultOwner, "GitHub owner or org login")
 	repo := flag.String("repo", defaultRepo, "GitHub repository name (without owner)")
-	project := flag.Int("project", envInt("GITHUB_PROJECT_NUMBER", 0), "GitHub Project v2 number")
+	project := flag.Int("project", defaultProject, "GitHub Project v2 number")
 	token := flag.String("token", defaultToken, "GitHub token (or GITHUB_TOKEN env var)")
 	outputDB := flag.String("db", defaultDB, "SQLite output database path")
 
@@ -135,18 +136,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func envInt(name string, fallback int) int {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return fallback
-	}
-	var parsed int
-	if _, err := fmt.Sscanf(raw, "%d", &parsed); err != nil {
-		return fallback
-	}
-	return parsed
 }
 
 func splitRepoRef(value string) (owner string, repo string, ok bool) {

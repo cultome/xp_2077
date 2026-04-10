@@ -13,9 +13,6 @@ import (
 
 func TestAppRouteTransitions(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "token")
-	t.Setenv("GITHUB_ORG", "org")
-	t.Setenv("GITHUB_REPO", "xp_2077")
-	t.Setenv("GITHUB_PROJECT_NUMBER", "1")
 
 	m := NewAppModel(mock.NewRepository(2077), false)
 
