@@ -9,60 +9,28 @@ import (
 	"strings"
 	"time"
 
-	gh "github.com/cultome/xp_2077/internal/github"
-	"github.com/cultome/xp_2077/internal/store"
+	"github.com/cultome/xp_2077/internal/extract"
 )
 
 func main() {
 	config := loadConfig()
-	if err := config.validate(); err != nil {
+	extractConfig := extract.Config{
+		Token:         config.Token,
+		Owner:         config.Owner,
+		Repo:          config.Repo,
+		ProjectNumber: config.ProjectNumber,
+		OutputDB:      config.OutputDB,
+	}
+	if err := extractConfig.Validate(); err != nil {
 		log.Fatalf("invalid configuration: %v", err)
 	}
 
-	ctx := context.Background()
-	client := gh.NewClient(config.Token)
-
-	fmt.Printf("Fetching Project v2 items (%s #%d)\n", config.Owner, config.ProjectNumber)
-	projectRaw, projectIssues, err := client.FetchProjectV2Issues(ctx, config.Owner, config.ProjectNumber)
+	result, err := extract.Run(context.Background(), extractConfig, nil)
 	if err != nil {
-		log.Fatalf("failed to fetch project issues: %v", err)
+		log.Fatalf("extraction failed: %v", err)
 	}
 
-	fmt.Printf("Fetching repository issues (%s/%s)\n", config.Owner, config.Repo)
-	repoRaw, repoIssues, err := client.FetchRepoIssues(ctx, config.Owner, config.Repo)
-	if err != nil {
-		log.Fatalf("failed to fetch repo issues: %v", err)
-	}
-
-	allNormalized := make([]gh.NormalizedIssue, 0, len(projectIssues)+len(repoIssues))
-	allNormalized = append(allNormalized, projectIssues...)
-	allNormalized = append(allNormalized, repoIssues...)
-
-	db, err := store.OpenSQLite(config.OutputDB)
-	if err != nil {
-		log.Fatalf("failed to open sqlite store: %v", err)
-	}
-	defer db.Close()
-
-	if err := db.ApplySchema(ctx); err != nil {
-		log.Fatalf("failed to apply sqlite schema: %v", err)
-	}
-	if err := db.UpsertProjectRaw(ctx, projectRaw); err != nil {
-		log.Fatalf("failed to persist project raw records: %v", err)
-	}
-	if err := db.UpsertRepoRaw(ctx, repoRaw); err != nil {
-		log.Fatalf("failed to persist repo raw records: %v", err)
-	}
-	if err := db.UpsertNormalized(ctx, allNormalized); err != nil {
-		log.Fatalf("failed to persist normalized records: %v", err)
-	}
-
-	counts, err := db.Counts(ctx)
-	if err != nil {
-		log.Fatalf("failed to read sqlite counts: %v", err)
-	}
-
-	printSummary(config.OutputDB, projectRaw, repoRaw, allNormalized, counts)
+	printSummary(config.OutputDB, result)
 }
 
 type Config struct {
@@ -101,26 +69,11 @@ func loadConfig() Config {
 	return cfg
 }
 
-func (c Config) validate() error {
-	if c.Token == "" {
-		return fmt.Errorf("token is required (flag -token or GITHUB_TOKEN)")
-	}
-	if c.Owner == "" {
-		return fmt.Errorf("owner is required (flag -owner or GITHUB_OWNER/GITHUB_ORG)")
-	}
-	if c.Repo == "" {
-		return fmt.Errorf("repo is required (flag -repo or GITHUB_REPO)")
-	}
-	if c.ProjectNumber <= 0 {
-		return fmt.Errorf("project must be > 0 (flag -project or GITHUB_PROJECT_NUMBER)")
-	}
-	if c.OutputDB == "" {
-		return fmt.Errorf("db path is required")
-	}
-	return nil
-}
-
-func printSummary(path string, projectRaw []gh.ProjectItemRawRecord, repoRaw []gh.RepoIssueRawRecord, all []gh.NormalizedIssue, counts store.SummaryCounts) {
+func printSummary(path string, result extract.Result) {
+	projectRaw := result.ProjectRaw
+	repoRaw := result.RepoRaw
+	all := result.Normalized
+	counts := result.Counts
 	duplicateByNodeID := map[string]int{}
 	var (
 		minUpdated       time.Time

@@ -60,6 +60,16 @@ go run ./cmd/github_extract \
 
 También puedes omitir flags y usar variables de entorno.
 
+## Ejecutar cliente TUI sin extracción
+
+Si ya tienes datos en SQLite y quieres abrir el cliente sin volver a consultar GitHub:
+
+```bash
+go run . -skip-extract
+```
+
+Con `-skip-extract` la app omite validaciones de variables GitHub y salta directo al Home usando los datos existentes en `OUTPUT_DB`.
+
 ### Validación esperada
 
 El script imprime un resumen con:

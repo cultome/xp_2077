@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -11,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cultome/xp_2077/internal/domain"
 	"github.com/cultome/xp_2077/internal/env"
+	"github.com/cultome/xp_2077/internal/extract"
 	"github.com/cultome/xp_2077/internal/mock"
 )
 
@@ -31,6 +35,10 @@ type envCheckedMsg struct {
 	report env.Report
 }
 
+type extractionDoneMsg struct {
+	err error
+}
+
 type AppModel struct {
 	route route
 
@@ -43,8 +51,10 @@ type AppModel struct {
 
 	requiredEnv []string
 	envReport   env.Report
-	pipeline    *mock.Pipeline
-	pipeState   mock.PipelineState
+	extractCfg  extract.Config
+	tracker     *extract.Tracker
+	pipeState   extract.State
+	loadingErr  string
 	repo        domain.Repository
 
 	startInput textinput.Model
@@ -60,9 +70,10 @@ type AppModel struct {
 	detailTable table.Model
 	issueTask   domain.TaskXP
 	issueScroll int
+	skipExtract bool
 }
 
-func NewAppModel(repo domain.Repository) AppModel {
+func NewAppModel(repo domain.Repository, skipExtract bool) AppModel {
 	if repo == nil {
 		repo = mock.NewRepository(2077)
 	}
@@ -104,7 +115,9 @@ func NewAppModel(repo domain.Repository) AppModel {
 		table.WithColumns([]table.Column{
 			{Title: "D3SCR1PC10N", Width: 22},
 			{Title: "PL4N D4T3", Width: 14},
+			{Title: "1MPL-F1N", Width: 14},
 			{Title: "R34L D4T3", Width: 12},
+			{Title: "D3LT4 D4YS", Width: 11},
 			{Title: "PR0Y3CT0", Width: 24},
 			{Title: "XP", Width: 6},
 		}),
@@ -118,14 +131,15 @@ func NewAppModel(repo domain.Repository) AppModel {
 		route:       routeSplash,
 		keys:        newKeyMap(),
 		styles:      newStyles(),
-		requiredEnv: []string{"GITHUB_TOKEN", "GITHUB_ORG"},
-		pipeline:    mock.NewPipeline(),
+		requiredEnv: []string{"GITHUB_TOKEN", "GITHUB_REPO", "GITHUB_PROJECT_NUMBER"},
+		extractCfg:  extract.ConfigFromEnv(),
 		repo:        repo,
 		startInput:  startInput,
 		endInput:    endInput,
 		dateRange:   domain.DateRange{Start: start, End: end},
 		userTable:   userTable,
 		detailTable: detailTable,
+		skipExtract: skipExtract,
 	}
 	m.refreshInputFocus()
 	m.refreshLeaderboard()
@@ -148,24 +162,37 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.route {
 		case routeSplash:
 			if m.frame > splashFrames {
+				if m.skipExtract {
+					m.route = routeHome
+					return m, tickCmd()
+				}
 				m.route = routeEnvCheck
 				return m, tea.Batch(checkEnvCmd(m.requiredEnv), tickCmd())
 			}
 		case routeLoading:
-			m.pipeState = m.pipeline.Tick()
-			if m.pipeState.Done {
-				m.refreshLeaderboard()
-				m.route = routeHome
+			if m.tracker != nil {
+				m.pipeState = m.tracker.State()
 			}
 		}
 		return m, tickCmd()
 	case envCheckedMsg:
 		m.envReport = typed.report
 		if !m.envReport.Missing {
-			m.route = routeLoading
-			m.pipeline.Reset()
-			m.pipeState = m.pipeline.State()
+			m.startLoading()
+			return m, tea.Batch(runExtractionCmd(m.extractCfg, m.tracker), tickCmd())
 		}
+		return m, nil
+	case extractionDoneMsg:
+		if typed.err != nil {
+			m.loadingErr = typed.err.Error()
+			return m, nil
+		}
+		m.loadingErr = ""
+		if m.tracker != nil {
+			m.pipeState = m.tracker.State()
+		}
+		m.refreshLeaderboard()
+		m.route = routeHome
 		return m, nil
 	case tea.KeyMsg:
 		if key.Matches(typed, m.keys.Quit) {
@@ -174,6 +201,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.route {
 		case routeEnvCheck:
 			return m.handleEnvCheckKeys(typed)
+		case routeLoading:
+			return m.handleLoadingKeys(typed)
 		case routeHome:
 			return m.handleHomeKeys(typed)
 		case routeDetail:
@@ -212,9 +241,16 @@ func (m *AppModel) handleEnvCheckKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return *m, checkEnvCmd(m.requiredEnv)
 	}
 	if key.Matches(msg, m.keys.Enter) && !m.envReport.Missing {
-		m.route = routeLoading
-		m.pipeline.Reset()
-		m.pipeState = m.pipeline.State()
+		m.startLoading()
+		return *m, tea.Batch(runExtractionCmd(m.extractCfg, m.tracker), tickCmd())
+	}
+	return *m, nil
+}
+
+func (m *AppModel) handleLoadingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if key.Matches(msg, m.keys.Retry) && m.loadingErr != "" {
+		m.startLoading()
+		return *m, tea.Batch(runExtractionCmd(m.extractCfg, m.tracker), tickCmd())
 	}
 	return *m, nil
 }
@@ -379,11 +415,18 @@ func (m *AppModel) refreshDetail() {
 	m.detailTasks = tasks
 	rows := make([]table.Row, 0, len(m.detailTasks))
 	for _, task := range m.detailTasks {
+		deltaDays := int(task.RealDate.Sub(task.PlannedEndDate).Hours() / 24)
+		deltaDaysValue := ""
+		if deltaDays != 0 {
+			deltaDaysValue = fmt.Sprintf("%+d", deltaDays)
+		}
 		rows = append(rows, table.Row{
 			task.Description,
 			task.PlannedDate.Format(domain.DateLayout),
+			task.PlannedEndDate.Format(domain.DateLayout),
 			task.RealDate.Format(domain.DateLayout),
-			task.Project,
+			deltaDaysValue,
+			fmt.Sprintf("%d", task.IssueNumber),
 			fmt.Sprintf("%.1f", task.XP),
 		})
 	}
@@ -409,8 +452,33 @@ func (m *AppModel) resizeTables() {
 
 func checkEnvCmd(required []string) tea.Cmd {
 	return func() tea.Msg {
-		return envCheckedMsg{report: env.Check(required)}
+		report := env.Check(required)
+		ownerOrOrgPresent := strings.TrimSpace(os.Getenv("GITHUB_OWNER")) != "" || strings.TrimSpace(os.Getenv("GITHUB_ORG")) != ""
+		report.Statuses = append(report.Statuses, env.RequirementStatus{
+			Name:    "GITHUB_OWNER | GITHUB_ORG",
+			Present: ownerOrOrgPresent,
+			Hint:    "export GITHUB_OWNER=... (or GITHUB_ORG=...)",
+		})
+		if !ownerOrOrgPresent {
+			report.Missing = true
+		}
+		return envCheckedMsg{report: report}
 	}
+}
+
+func runExtractionCmd(cfg extract.Config, tracker *extract.Tracker) tea.Cmd {
+	return func() tea.Msg {
+		_, err := extract.Run(context.Background(), cfg, tracker)
+		return extractionDoneMsg{err: err}
+	}
+}
+
+func (m *AppModel) startLoading() {
+	m.extractCfg = extract.ConfigFromEnv()
+	m.route = routeLoading
+	m.loadingErr = ""
+	m.tracker = extract.NewTracker()
+	m.pipeState = m.tracker.State()
 }
 
 func max(a, b int) int {

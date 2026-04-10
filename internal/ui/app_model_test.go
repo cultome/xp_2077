@@ -12,8 +12,10 @@ import (
 func TestAppRouteTransitions(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "token")
 	t.Setenv("GITHUB_ORG", "org")
+	t.Setenv("GITHUB_REPO", "xp_2077")
+	t.Setenv("GITHUB_PROJECT_NUMBER", "1")
 
-	m := NewAppModel(mock.NewRepository(2077))
+	m := NewAppModel(mock.NewRepository(2077), false)
 
 	for i := 0; i < splashFrames+2; i++ {
 		updated, _ := m.Update(tickMsg(time.Now()))
@@ -29,10 +31,8 @@ func TestAppRouteTransitions(t *testing.T) {
 		t.Fatalf("expected routeLoading, got %v", m.route)
 	}
 
-	for i := 0; i < 40 && m.route != routeHome; i++ {
-		updated, _ := m.Update(tickMsg(time.Now()))
-		m = updated.(AppModel)
-	}
+	updated, _ = m.Update(extractionDoneMsg{err: nil})
+	m = updated.(AppModel)
 
 	if m.route != routeHome {
 		t.Fatalf("expected routeHome after loading, got %v", m.route)
@@ -43,7 +43,7 @@ func TestAppRouteTransitions(t *testing.T) {
 }
 
 func TestDetailToIssueNavigation(t *testing.T) {
-	m := NewAppModel(mock.NewRepository(2077))
+	m := NewAppModel(mock.NewRepository(2077), false)
 	m.route = routeHome
 	m.focusIndex = 2
 
@@ -69,5 +69,18 @@ func TestDetailToIssueNavigation(t *testing.T) {
 	m = updated.(AppModel)
 	if m.route != routeDetail {
 		t.Fatalf("expected routeDetail after esc, got %v", m.route)
+	}
+}
+
+func TestSkipExtractBypassesEnvAndLoading(t *testing.T) {
+	m := NewAppModel(mock.NewRepository(2077), true)
+
+	for i := 0; i < splashFrames+2; i++ {
+		updated, _ := m.Update(tickMsg(time.Now()))
+		m = updated.(AppModel)
+	}
+
+	if m.route != routeHome {
+		t.Fatalf("expected routeHome when skip extract is enabled, got %v", m.route)
 	}
 }

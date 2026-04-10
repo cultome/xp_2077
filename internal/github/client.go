@@ -29,6 +29,10 @@ func NewClient(token string) *Client {
 }
 
 func (c *Client) FetchProjectV2Issues(ctx context.Context, org string, projectNumber int) ([]ProjectItemRawRecord, []NormalizedIssue, error) {
+	return c.FetchProjectV2IssuesWithProgress(ctx, org, projectNumber, nil)
+}
+
+func (c *Client) FetchProjectV2IssuesWithProgress(ctx context.Context, org string, projectNumber int, onPageFetched func(page int)) ([]ProjectItemRawRecord, []NormalizedIssue, error) {
 	if strings.TrimSpace(org) == "" {
 		return nil, nil, fmt.Errorf("organization is required")
 	}
@@ -137,6 +141,7 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
 	normalized := make([]NormalizedIssue, 0, 128)
 	cursor := ""
 
+	page := 1
 	for {
 		variables := map[string]any{
 			"org":    org,
@@ -210,16 +215,24 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
 			normalized = append(normalized, issue)
 		}
 
+		if onPageFetched != nil {
+			onPageFetched(page)
+		}
 		if !items.PageInfo.HasNextPage {
 			break
 		}
 		cursor = items.PageInfo.EndCursor
+		page++
 	}
 
 	return rawRecords, normalized, nil
 }
 
 func (c *Client) FetchRepoIssues(ctx context.Context, owner, repo string) ([]RepoIssueRawRecord, []NormalizedIssue, error) {
+	return c.FetchRepoIssuesWithProgress(ctx, owner, repo, nil)
+}
+
+func (c *Client) FetchRepoIssuesWithProgress(ctx context.Context, owner, repo string, onPageFetched func(page int)) ([]RepoIssueRawRecord, []NormalizedIssue, error) {
 	if strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
 		return nil, nil, fmt.Errorf("owner and repo are required")
 	}
@@ -298,6 +311,9 @@ func (c *Client) FetchRepoIssues(ctx context.Context, owner, repo string) ([]Rep
 			normalized = append(normalized, n)
 		}
 
+		if onPageFetched != nil {
+			onPageFetched(page)
+		}
 		if len(items) < perPage {
 			break
 		}
