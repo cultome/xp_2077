@@ -24,6 +24,7 @@ type UserXP struct {
 type TaskXP struct {
 	Description         string
 	PlannedDate         time.Time
+	PlannedEndDate      time.Time
 	RealDate            time.Time
 	Project             string
 	ID                  string

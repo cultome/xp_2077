@@ -379,6 +379,7 @@ func (s *SQLiteStore) TasksForUser(login string, dateRange domain.DateRange) ([]
 SELECT
 	i.title,
 	i.planned_start_date,
+	i.planned_end_date,
 	i.real_end_date,
 	i.repository_full_name,
 	COALESCE(i.issue_node_id, i.source || ':' || i.source_record_id) AS task_id,
@@ -432,6 +433,7 @@ func (s *SQLiteStore) TaskByID(taskID string) (domain.TaskXP, error) {
 SELECT
 	i.title,
 	i.planned_start_date,
+	i.planned_end_date,
 	i.real_end_date,
 	i.repository_full_name,
 	COALESCE(i.issue_node_id, i.source || ':' || i.source_record_id) AS task_id,
@@ -509,6 +511,7 @@ func scanTaskScanner(scanner rowScanner) (domain.TaskXP, error) {
 	var (
 		title         string
 		plannedDate   string
+		plannedEnd    string
 		realDate      string
 		project       string
 		taskID        string
@@ -528,6 +531,7 @@ func scanTaskScanner(scanner rowScanner) (domain.TaskXP, error) {
 	if err := scanner.Scan(
 		&title,
 		&plannedDate,
+		&plannedEnd,
 		&realDate,
 		&project,
 		&taskID,
@@ -554,6 +558,10 @@ func scanTaskScanner(scanner rowScanner) (domain.TaskXP, error) {
 	realTime, err := time.Parse(domain.DateLayout, realDate)
 	if err != nil {
 		return domain.TaskXP{}, fmt.Errorf("parse real_end_date %q: %w", realDate, err)
+	}
+	plannedEndTime, err := time.Parse(domain.DateLayout, plannedEnd)
+	if err != nil {
+		return domain.TaskXP{}, fmt.Errorf("parse planned_end_date %q: %w", plannedEnd, err)
 	}
 	createdAt, err := parseRFC3339(createdAtText)
 	if err != nil {
@@ -585,6 +593,7 @@ func scanTaskScanner(scanner rowScanner) (domain.TaskXP, error) {
 	return domain.TaskXP{
 		Description:         title,
 		PlannedDate:         plannedTime,
+		PlannedEndDate:      plannedEndTime,
 		RealDate:            realTime,
 		Project:             project,
 		ID:                  taskID,

@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cultome/xp_2077/internal/domain"
 )
@@ -67,8 +68,9 @@ func (m AppModel) issueDetailContentLines() []string {
 			fmt.Sprintf("author: %s", task.IssueAuthorLogin),
 			fmt.Sprintf("assignees: %s", renderList(task.IssueAssigneeLogins)),
 			fmt.Sprintf("labels: %s", renderList(task.IssueLabels)),
-			fmt.Sprintf("planned: %s", task.PlannedDate.Format(domain.DateLayout)),
-			fmt.Sprintf("actual: %s", task.RealDate.Format(domain.DateLayout)),
+			fmt.Sprintf("Implementacion Inicio: %s", formatDateOrDash(task.PlannedDate)),
+			fmt.Sprintf("Implementacion Fin: %s", formatDateOrDash(task.PlannedEndDate)),
+			fmt.Sprintf("Implementacion Fin Real: %s", formatDateOrDash(task.RealDate)),
 			fmt.Sprintf("url: %s", task.IssueURL),
 		}, "\n")),
 		"",
@@ -91,4 +93,11 @@ func formatOptionalXP(value *float64) string {
 		return "-"
 	}
 	return fmt.Sprintf("%.1f", *value)
+}
+
+func formatDateOrDash(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Format(domain.DateLayout)
 }

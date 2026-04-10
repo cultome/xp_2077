@@ -31,7 +31,8 @@ func NewRepository(seed int64) *Repository {
 		for i := range 24 {
 			offsetDays := rnd.Intn(120)
 			planned := base.AddDate(0, 0, offsetDays)
-			real := planned.AddDate(0, 0, rnd.Intn(4)-1)
+			plannedEnd := planned.AddDate(0, 0, rnd.Intn(7)+1)
+			real := plannedEnd.AddDate(0, 0, rnd.Intn(4)-1)
 			xp := 15 + rnd.Intn(90)
 			xpBase := float64(xp)
 			issueNumber := 1000 + rnd.Intn(9000)
@@ -53,6 +54,7 @@ func NewRepository(seed int64) *Repository {
 			userTasks = append(userTasks, domain.TaskXP{
 				Description:         fmt.Sprintf("Task %02d pipeline tuning", i+1),
 				PlannedDate:         planned,
+				PlannedEndDate:      plannedEnd,
 				RealDate:            real,
 				Project:             projects[rnd.Intn(len(projects))],
 				ID:                  fmt.Sprintf("%s-%03d", user[:4], i+1),

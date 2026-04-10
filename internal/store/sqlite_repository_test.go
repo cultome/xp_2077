@@ -145,6 +145,9 @@ func TestSQLiteRepositoryReturnsLeaderboardAndTasks(t *testing.T) {
 	if got, want := tasks[0].PlannedDate.Format(domain.DateLayout), "2026-01-01"; got != want {
 		t.Fatalf("expected planned start date %s, got %s", want, got)
 	}
+	if got, want := tasks[0].PlannedEndDate.Format(domain.DateLayout), "2026-01-11"; got != want {
+		t.Fatalf("expected planned end date %s, got %s", want, got)
+	}
 
 	task, err := store.TaskByID("I_1")
 	if err != nil {
