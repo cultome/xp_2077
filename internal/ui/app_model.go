@@ -3,7 +3,9 @@ package ui
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,6 +41,21 @@ type extractionDoneMsg struct {
 	err error
 }
 
+type xpRange struct {
+	Low     float64
+	High    float64
+	HasHigh bool
+}
+
+type xpRanges struct {
+	Available    bool
+	Normal       xpRange
+	High         xpRange
+	Outstanding  xpRange
+	Median       float64
+	StdDeviation float64
+}
+
 type AppModel struct {
 	route route
 
@@ -63,6 +80,7 @@ type AppModel struct {
 	homeErr    string
 	dateRange  domain.DateRange
 	users      []domain.UserXP
+	xpRanges   xpRanges
 	userTable  table.Model
 
 	detailUser  domain.UserXP
@@ -382,11 +400,13 @@ func (m *AppModel) refreshLeaderboard() {
 	users, err := m.repo.Leaderboard(m.dateRange)
 	if err != nil {
 		m.users = nil
+		m.xpRanges = xpRanges{}
 		m.homeErr = "D4T4 ERR: no fue posible cargar leaderboard."
 		m.userTable.SetRows([]table.Row{})
 		return
 	}
 	m.users = users
+	m.xpRanges = computeXPRanges(m.users)
 	rows := make([]table.Row, 0, len(m.users))
 	for _, user := range m.users {
 		rows = append(rows, table.Row{
@@ -400,6 +420,82 @@ func (m *AppModel) refreshLeaderboard() {
 	if len(rows) > 0 && m.userTable.Cursor() >= len(rows) {
 		m.userTable.SetCursor(0)
 	}
+}
+
+func computeXPRanges(users []domain.UserXP) xpRanges {
+	if len(users) == 0 {
+		return xpRanges{}
+	}
+
+	xpValues := make([]float64, 0, len(users))
+	for _, user := range users {
+		xpValues = append(xpValues, user.XP)
+	}
+	sort.Float64s(xpValues)
+
+	median := median(xpValues)
+	stdDev := populationStdDev(xpValues)
+
+	normalLow := median - 0.5*stdDev
+	normalHigh := normalLow + stdDev
+	highLow := median + 0.5*stdDev
+	highHigh := highLow + 1.5*stdDev
+	outstandingLow := median + 2*stdDev
+
+	outstanding := xpRange{
+		Low: outstandingLow,
+	}
+	for i := len(xpValues) - 1; i >= 0; i-- {
+		if xpValues[i] > outstandingLow {
+			outstanding.High = xpValues[i]
+			outstanding.HasHigh = true
+			break
+		}
+	}
+
+	return xpRanges{
+		Available: true,
+		Normal: xpRange{
+			Low:     normalLow,
+			High:    normalHigh,
+			HasHigh: true,
+		},
+		High: xpRange{
+			Low:     highLow,
+			High:    highHigh,
+			HasHigh: true,
+		},
+		Outstanding:  outstanding,
+		Median:       median,
+		StdDeviation: stdDev,
+	}
+}
+
+func median(values []float64) float64 {
+	n := len(values)
+	mid := n / 2
+	if n%2 == 1 {
+		return values[mid]
+	}
+	return (values[mid-1] + values[mid]) / 2
+}
+
+func populationStdDev(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	mean := 0.0
+	for _, value := range values {
+		mean += value
+	}
+	mean /= float64(len(values))
+
+	sum := 0.0
+	for _, value := range values {
+		delta := value - mean
+		sum += delta * delta
+	}
+	return math.Sqrt(sum / float64(len(values)))
 }
 
 func (m *AppModel) refreshDetail() {
@@ -426,7 +522,7 @@ func (m *AppModel) refreshDetail() {
 			task.PlannedEndDate.Format(domain.DateLayout),
 			task.RealDate.Format(domain.DateLayout),
 			deltaDaysValue,
-			fmt.Sprintf("%d", task.IssueNumber),
+			fmt.Sprintf("%s#%d", task.Project, task.IssueNumber),
 			fmt.Sprintf("%.1f", task.XP),
 		})
 	}
@@ -445,7 +541,7 @@ func (m *AppModel) resizeTables() {
 		w = 32
 	}
 	m.userTable.SetWidth(w)
-	m.userTable.SetHeight(max(6, m.height-12))
+	m.userTable.SetHeight(max(6, m.height-16))
 	m.detailTable.SetWidth(w)
 	m.detailTable.SetHeight(max(6, m.height-10))
 }
