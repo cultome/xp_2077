@@ -1,14 +1,32 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cultome/xp_2077/internal/store"
 	"github.com/cultome/xp_2077/internal/ui"
 )
 
 func main() {
-	program := tea.NewProgram(ui.NewAppModel(), tea.WithAltScreen())
+	dbPath := strings.TrimSpace(os.Getenv("OUTPUT_DB"))
+	if dbPath == "" {
+		dbPath = "./tmp/github_extract.db"
+	}
+
+	repo, err := store.OpenSQLite(dbPath)
+	if err != nil {
+		log.Fatalf("could not open sqlite repository: %v", err)
+	}
+	defer repo.Close()
+	if err := repo.ApplySchema(context.Background()); err != nil {
+		log.Fatalf("could not apply sqlite schema: %v", err)
+	}
+
+	program := tea.NewProgram(ui.NewAppModel(repo), tea.WithAltScreen())
 	if _, err := program.Run(); err != nil {
 		log.Fatalf("could not start program: %v", err)
 	}

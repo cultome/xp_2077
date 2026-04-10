@@ -2,6 +2,8 @@ package gh
 
 import (
 	"encoding/json"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,10 +43,16 @@ type NormalizedIssue struct {
 	Title              string
 	State              string
 	URL                string
+	IssueBody          string
 	AuthorLogin        string
 	AssigneeLogins     []string
 	Labels             []string
 	ProjectFields      map[string]string
+	XPBase             *float64
+	PlannedStartDate   *time.Time
+	PlannedEndDate     *time.Time
+	RealEndDate        *time.Time
+	XPFinal            *float64
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	ClosedAt           *time.Time
@@ -56,6 +64,7 @@ type projectIssueDTO struct {
 	Title      string     `json:"title"`
 	State      string     `json:"state"`
 	URL        string     `json:"url"`
+	Body       string     `json:"body"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
 	ClosedAt   *time.Time `json:"closedAt"`
@@ -113,6 +122,7 @@ func normalizeProjectIssue(sourceRecordID string, issue projectIssueDTO, project
 	if issue.Author != nil {
 		authorLogin = issue.Author.Login
 	}
+	xpBase, plannedStart, plannedEnd, realEnd, xpFinal := parseProjectXPFields(projectFields)
 
 	return NormalizedIssue{
 		Source:             SourceProjectV2,
@@ -125,10 +135,16 @@ func normalizeProjectIssue(sourceRecordID string, issue projectIssueDTO, project
 		Title:              issue.Title,
 		State:              strings.ToLower(issue.State),
 		URL:                issue.URL,
+		IssueBody:          issue.Body,
 		AuthorLogin:        authorLogin,
 		AssigneeLogins:     assignees,
 		Labels:             labels,
 		ProjectFields:      projectFields,
+		XPBase:             xpBase,
+		PlannedStartDate:   plannedStart,
+		PlannedEndDate:     plannedEnd,
+		RealEndDate:        realEnd,
+		XPFinal:            xpFinal,
 		CreatedAt:          issue.CreatedAt,
 		UpdatedAt:          issue.UpdatedAt,
 		ClosedAt:           issue.ClosedAt,
@@ -142,6 +158,7 @@ type repoIssueDTO struct {
 	Title     string     `json:"title"`
 	State     string     `json:"state"`
 	HTMLURL   string     `json:"html_url"`
+	Body      string     `json:"body"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	ClosedAt  *time.Time `json:"closed_at"`
@@ -193,6 +210,7 @@ func normalizeRepoIssue(issue repoIssueDTO, owner, repo string) NormalizedIssue 
 		Title:              issue.Title,
 		State:              strings.ToLower(issue.State),
 		URL:                issue.HTMLURL,
+		IssueBody:          issue.Body,
 		AuthorLogin:        authorLogin,
 		AssigneeLogins:     assignees,
 		Labels:             labels,
@@ -201,4 +219,102 @@ func normalizeRepoIssue(issue repoIssueDTO, owner, repo string) NormalizedIssue 
 		UpdatedAt:          issue.UpdatedAt,
 		ClosedAt:           issue.ClosedAt,
 	}
+}
+
+var fieldKeyNormalizer = strings.NewReplacer(
+	"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ñ", "n",
+	"Á", "a", "É", "e", "Í", "i", "Ó", "o", "Ú", "u", "Ñ", "n",
+)
+
+func parseProjectXPFields(fields map[string]string) (xpBase *float64, plannedStart, plannedEnd, realEnd *time.Time, xpFinal *float64) {
+	xpText, hasXP := getFirstFieldValue(fields, []string{"xp"})
+	plannedStartText, hasPlannedStart := getFirstFieldValue(fields, []string{
+		"fecha programada de inicio",
+		"implementacion inicio",
+	})
+	plannedEndText, hasPlannedEnd := getFirstFieldValue(fields, []string{
+		"fecha programada de fin",
+		"implementacion fin",
+	})
+	realEndText, hasRealEnd := getFirstFieldValue(fields, []string{
+		"fecha real de fin",
+		"implementacion fin real",
+	})
+	if !hasXP || !hasPlannedStart || !hasPlannedEnd || !hasRealEnd {
+		return nil, nil, nil, nil, nil
+	}
+
+	parsedXP, err := strconv.ParseFloat(strings.TrimSpace(xpText), 64)
+	if err != nil {
+		return nil, nil, nil, nil, nil
+	}
+	startDate, err := parseProjectDate(plannedStartText)
+	if err != nil {
+		return nil, nil, nil, nil, nil
+	}
+	endDate, err := parseProjectDate(plannedEndText)
+	if err != nil {
+		return nil, nil, nil, nil, nil
+	}
+	realDate, err := parseProjectDate(realEndText)
+	if err != nil {
+		return nil, nil, nil, nil, nil
+	}
+
+	durationDays := endDate.Sub(startDate).Hours() / 24
+	if durationDays <= 0 {
+		return nil, nil, nil, nil, nil
+	}
+
+	deltaDays := endDate.Sub(realDate).Hours() / 24
+	deltaPct := math.Abs(deltaDays) / durationDays
+	finalXP := parsedXP
+	if deltaDays > 0 {
+		finalXP = parsedXP + (parsedXP * deltaPct)
+	} else if deltaDays < 0 {
+		finalXP = parsedXP - (parsedXP * deltaPct)
+	}
+	if finalXP < 0 {
+		finalXP = 0
+	}
+	finalXP = math.Round(finalXP*10) / 10
+
+	return floatPtr(parsedXP), timePtr(startDate), timePtr(endDate), timePtr(realDate), floatPtr(finalXP)
+}
+
+func parseProjectDate(value string) (time.Time, error) {
+	return time.Parse("2006-01-02", strings.TrimSpace(value))
+}
+
+func getFieldValue(fields map[string]string, expectedName string) (string, bool) {
+	want := normalizeFieldName(expectedName)
+	for key, value := range fields {
+		if normalizeFieldName(key) == want {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func getFirstFieldValue(fields map[string]string, expectedNames []string) (string, bool) {
+	for _, expectedName := range expectedNames {
+		if value, ok := getFieldValue(fields, expectedName); ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func normalizeFieldName(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(fieldKeyNormalizer.Replace(strings.TrimSpace(value)))), " ")
+}
+
+func floatPtr(value float64) *float64 {
+	v := value
+	return &v
+}
+
+func timePtr(value time.Time) *time.Time {
+	v := value
+	return &v
 }

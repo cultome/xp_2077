@@ -15,13 +15,19 @@ func TestLeaderboardIncludesTicketMetrics(t *testing.T) {
 		End:   time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	leaderboard := repo.Leaderboard(dateRange)
+	leaderboard, err := repo.Leaderboard(dateRange)
+	if err != nil {
+		t.Fatalf("expected leaderboard without error, got %v", err)
+	}
 	if len(leaderboard) == 0 {
 		t.Fatal("expected leaderboard with users")
 	}
 
 	for _, user := range leaderboard {
-		tasks := repo.TasksForUser(user.Login, dateRange)
+		tasks, err := repo.TasksForUser(user.Login, dateRange)
+		if err != nil {
+			t.Fatalf("expected tasks without error for %s, got %v", user.Login, err)
+		}
 		if user.TicketCount != len(tasks) {
 			t.Fatalf("expected ticket count %d for %s, got %d", len(tasks), user.Login, user.TicketCount)
 		}

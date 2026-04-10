@@ -79,6 +79,7 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
               id
               number
               title
+              body
               state
               url
               createdAt

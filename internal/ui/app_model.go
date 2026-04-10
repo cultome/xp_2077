@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -46,7 +45,7 @@ type AppModel struct {
 	envReport   env.Report
 	pipeline    *mock.Pipeline
 	pipeState   mock.PipelineState
-	repo        *mock.Repository
+	repo        domain.Repository
 
 	startInput textinput.Model
 	endInput   textinput.Model
@@ -60,9 +59,14 @@ type AppModel struct {
 	detailTasks []domain.TaskXP
 	detailTable table.Model
 	issueTask   domain.TaskXP
+	issueScroll int
 }
 
-func NewAppModel() AppModel {
+func NewAppModel(repo domain.Repository) AppModel {
+	if repo == nil {
+		repo = mock.NewRepository(2077)
+	}
+
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	end := today
@@ -101,8 +105,7 @@ func NewAppModel() AppModel {
 			{Title: "D3SCR1PC10N", Width: 22},
 			{Title: "PL4N D4T3", Width: 14},
 			{Title: "R34L D4T3", Width: 12},
-			{Title: "PR0Y3CT0", Width: 12},
-			{Title: "ID", Width: 10},
+			{Title: "PR0Y3CT0", Width: 24},
 			{Title: "XP", Width: 6},
 		}),
 		table.WithRows([]table.Row{}),
@@ -117,7 +120,7 @@ func NewAppModel() AppModel {
 		styles:      newStyles(),
 		requiredEnv: []string{"GITHUB_TOKEN", "GITHUB_ORG"},
 		pipeline:    mock.NewPipeline(),
-		repo:        mock.NewRepository(2077),
+		repo:        repo,
 		startInput:  startInput,
 		endInput:    endInput,
 		dateRange:   domain.DateRange{Start: start, End: end},
@@ -271,6 +274,7 @@ func (m *AppModel) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		idx := m.detailTable.Cursor()
 		if idx >= 0 && idx < len(m.detailTasks) {
 			m.issueTask = m.detailTasks[idx]
+			m.issueScroll = 0
 			m.route = routeIssueDetail
 		}
 		return *m, nil
@@ -283,8 +287,38 @@ func (m *AppModel) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *AppModel) handleIssueDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, m.keys.Back) {
 		m.route = routeDetail
+		m.issueScroll = 0
+		return *m, nil
+	}
+	if key.Matches(msg, m.keys.Up) {
+		if m.issueScroll > 0 {
+			m.issueScroll--
+		}
+		return *m, nil
+	}
+	if key.Matches(msg, m.keys.Down) {
+		maxScroll := m.issueDetailMaxScroll()
+		if m.issueScroll < maxScroll {
+			m.issueScroll++
+		}
 	}
 	return *m, nil
+}
+
+func (m AppModel) issueDetailVisibleHeight() int {
+	if m.height <= 0 {
+		return 14
+	}
+	return max(8, m.height-14)
+}
+
+func (m AppModel) issueDetailMaxScroll() int {
+	total := len(m.issueDetailContentLines())
+	visible := m.issueDetailVisibleHeight()
+	if total <= visible {
+		return 0
+	}
+	return total - visible
 }
 
 func (m *AppModel) refreshInputFocus() {
@@ -309,13 +343,20 @@ func (m *AppModel) applyDateFilter() {
 }
 
 func (m *AppModel) refreshLeaderboard() {
-	m.users = m.repo.Leaderboard(m.dateRange)
+	users, err := m.repo.Leaderboard(m.dateRange)
+	if err != nil {
+		m.users = nil
+		m.homeErr = "D4T4 ERR: no fue posible cargar leaderboard."
+		m.userTable.SetRows([]table.Row{})
+		return
+	}
+	m.users = users
 	rows := make([]table.Row, 0, len(m.users))
 	for _, user := range m.users {
 		rows = append(rows, table.Row{
 			user.Login,
-			strconv.Itoa(user.XP),
-			strconv.Itoa(user.TicketCount),
+			fmt.Sprintf("%.1f", user.XP),
+			fmt.Sprintf("%d", user.TicketCount),
 			fmt.Sprintf("%+.1f", user.AvgDelayDays),
 		})
 	}
@@ -326,7 +367,16 @@ func (m *AppModel) refreshLeaderboard() {
 }
 
 func (m *AppModel) refreshDetail() {
-	m.detailTasks = m.repo.TasksForUser(m.detailUser.Login, m.dateRange)
+	tasks, err := m.repo.TasksForUser(m.detailUser.Login, m.dateRange)
+	if err != nil {
+		m.detailTasks = nil
+		m.detailTable.SetRows([]table.Row{})
+		if m.homeErr == "" {
+			m.homeErr = "D4T4 ERR: no fue posible cargar detalle."
+		}
+		return
+	}
+	m.detailTasks = tasks
 	rows := make([]table.Row, 0, len(m.detailTasks))
 	for _, task := range m.detailTasks {
 		rows = append(rows, table.Row{
@@ -334,8 +384,7 @@ func (m *AppModel) refreshDetail() {
 			task.PlannedDate.Format(domain.DateLayout),
 			task.RealDate.Format(domain.DateLayout),
 			task.Project,
-			task.ID,
-			strconv.Itoa(task.XP),
+			fmt.Sprintf("%.1f", task.XP),
 		})
 	}
 	m.detailTable.SetRows(rows)

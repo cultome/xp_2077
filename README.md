@@ -15,6 +15,30 @@ Luego persiste:
 - payload crudo de Project v2 en `project_items_raw`
 - payload crudo de repo issues en `repo_issues_raw`
 - versión normalizada en `issues_normalized`
+  - `issue_body`
+  - `xp_base`
+  - `planned_start_date`
+  - `planned_end_date`
+  - `real_end_date`
+  - `xp_final`
+
+### Regla XP persistida
+
+`xp_final` se calcula solo cuando existen los 4 campos de Project v2:
+
+- `XP`
+- `fecha programada de inicio`
+- `fecha programada de fin`
+- `fecha real de fin`
+
+Fórmula:
+
+- `delta_days = planned_end_date - real_end_date`
+- `delta_pct = abs(delta_days) / (planned_end_date - planned_start_date)`
+- si `delta_days > 0`: `xp_base + (xp_base * delta_pct)`
+- si `delta_days < 0`: `xp_base - (xp_base * delta_pct)`
+- si `delta_days == 0`: `xp_base`
+- redondeo a 1 decimal y clamp mínimo a `0`
 
 ### Variables de entorno
 

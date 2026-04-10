@@ -16,7 +16,7 @@ type DateRange struct {
 
 type UserXP struct {
 	Login        string
-	XP           int
+	XP           float64
 	TicketCount  int
 	AvgDelayDays float64
 }
@@ -27,7 +27,8 @@ type TaskXP struct {
 	RealDate            time.Time
 	Project             string
 	ID                  string
-	XP                  int
+	XP                  float64
+	XPBase              *float64
 	IssueNumber         int
 	IssueState          string
 	IssueURL            string

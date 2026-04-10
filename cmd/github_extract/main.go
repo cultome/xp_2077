@@ -123,8 +123,10 @@ func (c Config) validate() error {
 func printSummary(path string, projectRaw []gh.ProjectItemRawRecord, repoRaw []gh.RepoIssueRawRecord, all []gh.NormalizedIssue, counts store.SummaryCounts) {
 	duplicateByNodeID := map[string]int{}
 	var (
-		minUpdated time.Time
-		maxUpdated time.Time
+		minUpdated       time.Time
+		maxUpdated       time.Time
+		xpComputedCount  int
+		issueBodyPresent int
 	)
 
 	for _, issue := range all {
@@ -138,6 +140,12 @@ func printSummary(path string, projectRaw []gh.ProjectItemRawRecord, repoRaw []g
 			if maxUpdated.IsZero() || issue.UpdatedAt.After(maxUpdated) {
 				maxUpdated = issue.UpdatedAt
 			}
+		}
+		if issue.XPFinal != nil {
+			xpComputedCount++
+		}
+		if strings.TrimSpace(issue.IssueBody) != "" {
+			issueBodyPresent++
 		}
 	}
 
@@ -157,6 +165,8 @@ func printSummary(path string, projectRaw []gh.ProjectItemRawRecord, repoRaw []g
 	fmt.Printf("- SQLite project_items_raw count: %d\n", counts.ProjectRawCount)
 	fmt.Printf("- SQLite repo_issues_raw count: %d\n", counts.RepoRawCount)
 	fmt.Printf("- SQLite issues_normalized count: %d\n", counts.NormalizedCount)
+	fmt.Printf("- Normalized records with computed xp_final: %d\n", xpComputedCount)
+	fmt.Printf("- Normalized records with issue body: %d\n", issueBodyPresent)
 	fmt.Printf("- Duplicate issue_node_id entries across sources: %d\n", duplicates)
 	if minUpdated.IsZero() || maxUpdated.IsZero() {
 		fmt.Println("- UpdatedAt range: N/A")

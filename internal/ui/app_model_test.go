@@ -6,13 +6,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cultome/xp_2077/internal/env"
+	"github.com/cultome/xp_2077/internal/mock"
 )
 
 func TestAppRouteTransitions(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "token")
 	t.Setenv("GITHUB_ORG", "org")
 
-	m := NewAppModel()
+	m := NewAppModel(mock.NewRepository(2077))
 
 	for i := 0; i < splashFrames+2; i++ {
 		updated, _ := m.Update(tickMsg(time.Now()))
@@ -42,7 +43,7 @@ func TestAppRouteTransitions(t *testing.T) {
 }
 
 func TestDetailToIssueNavigation(t *testing.T) {
-	m := NewAppModel()
+	m := NewAppModel(mock.NewRepository(2077))
 	m.route = routeHome
 	m.focusIndex = 2
 

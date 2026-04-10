@@ -33,6 +33,7 @@ func NewRepository(seed int64) *Repository {
 			planned := base.AddDate(0, 0, offsetDays)
 			real := planned.AddDate(0, 0, rnd.Intn(4)-1)
 			xp := 15 + rnd.Intn(90)
+			xpBase := float64(xp)
 			issueNumber := 1000 + rnd.Intn(9000)
 			issueState := "open"
 			var issueClosedAt *time.Time
@@ -55,7 +56,8 @@ func NewRepository(seed int64) *Repository {
 				RealDate:            real,
 				Project:             projects[rnd.Intn(len(projects))],
 				ID:                  fmt.Sprintf("%s-%03d", user[:4], i+1),
-				XP:                  xp,
+				XP:                  float64(xp),
+				XPBase:              &xpBase,
 				IssueNumber:         issueNumber,
 				IssueState:          issueState,
 				IssueURL:            fmt.Sprintf("https://github.com/cultome/%s/issues/%d", "xp_2077", issueNumber),
@@ -74,10 +76,10 @@ func NewRepository(seed int64) *Repository {
 	return &Repository{users: users, tasks: tasks}
 }
 
-func (r *Repository) Leaderboard(dateRange domain.DateRange) []domain.UserXP {
+func (r *Repository) Leaderboard(dateRange domain.DateRange) ([]domain.UserXP, error) {
 	result := make([]domain.UserXP, 0, len(r.users))
 	for _, user := range r.users {
-		total := 0
+		total := 0.0
 		ticketCount := 0
 		delayDaysTotal := 0.0
 		for _, task := range r.tasks[user] {
@@ -104,10 +106,10 @@ func (r *Repository) Leaderboard(dateRange domain.DateRange) []domain.UserXP {
 		}
 		return result[i].XP > result[j].XP
 	})
-	return result
+	return result, nil
 }
 
-func (r *Repository) TasksForUser(login string, dateRange domain.DateRange) []domain.TaskXP {
+func (r *Repository) TasksForUser(login string, dateRange domain.DateRange) ([]domain.TaskXP, error) {
 	src := r.tasks[login]
 	result := make([]domain.TaskXP, 0, len(src))
 	for _, task := range src {
@@ -118,5 +120,16 @@ func (r *Repository) TasksForUser(login string, dateRange domain.DateRange) []do
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].RealDate.Before(result[j].RealDate)
 	})
-	return result
+	return result, nil
+}
+
+func (r *Repository) TaskByID(taskID string) (domain.TaskXP, error) {
+	for _, tasks := range r.tasks {
+		for _, task := range tasks {
+			if task.ID == taskID {
+				return task, nil
+			}
+		}
+	}
+	return domain.TaskXP{}, fmt.Errorf("%w: id=%s", domain.ErrTaskNotFound, taskID)
 }
