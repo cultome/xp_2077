@@ -53,6 +53,37 @@ func TestParseProjectXPFieldsRounding(t *testing.T) {
 	}
 }
 
+func TestParseProjectXPFieldsSameDayPlanCreditsBase(t *testing.T) {
+	fields := map[string]string{
+		"XP":                         "24",
+		"fecha programada de inicio": "2026-01-29",
+		"fecha programada de fin":    "2026-01-29",
+		"fecha real de fin":          "2026-01-29",
+	}
+
+	xpBase, start, end, real, xpFinal := parseProjectXPFields(fields)
+	if xpBase == nil || start == nil || end == nil || real == nil || xpFinal == nil {
+		t.Fatal("expected a same-day task to produce xp, not be dropped")
+	}
+	if got, want := *xpFinal, 24.0; got != want {
+		t.Fatalf("expected same-day xp final %.1f, got %.1f", want, got)
+	}
+}
+
+func TestParseProjectXPFieldsRejectsNegativeDuration(t *testing.T) {
+	fields := map[string]string{
+		"XP":                         "24",
+		"fecha programada de inicio": "2026-01-30",
+		"fecha programada de fin":    "2026-01-29",
+		"fecha real de fin":          "2026-01-29",
+	}
+
+	xpBase, _, _, _, xpFinal := parseProjectXPFields(fields)
+	if xpBase != nil || xpFinal != nil {
+		t.Fatal("expected nil values when planned end precedes planned start")
+	}
+}
+
 func TestParseProjectXPFieldsMissingData(t *testing.T) {
 	fields := map[string]string{
 		"XP":                         "100",
@@ -80,6 +111,44 @@ func TestParseProjectXPFieldsSupportsImplementationAliases(t *testing.T) {
 	}
 	if got, want := *xpFinal, 120.0; got != want {
 		t.Fatalf("expected xp final %.1f, got %.1f", want, got)
+	}
+}
+
+func TestClassifyProjectNode(t *testing.T) {
+	cases := []struct {
+		name        string
+		contentType string
+		nodeType    string
+		want        projectNodeKind
+	}{
+		{"readable issue", "Issue", "ISSUE", nodeReadableIssue},
+		{"inaccessible issue (null content)", "", "ISSUE", nodeInaccessibleIssue},
+		{"pull request", "PullRequest", "PULL_REQUEST", nodeNonIssue},
+		{"draft issue", "DraftIssue", "DRAFT_ISSUE", nodeNonIssue},
+		{"redacted (null content, no type)", "", "REDACTED", nodeNonIssue},
+		{"lowercase issue type still counted", "", "issue", nodeInaccessibleIssue},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := classifyProjectNode(tc.contentType, tc.nodeType); got != tc.want {
+				t.Fatalf("classifyProjectNode(%q,%q) = %d, want %d", tc.contentType, tc.nodeType, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFatalGraphErrorsToleratesPerItemContentErrors(t *testing.T) {
+	errs := []graphQLError{
+		{Type: "FORBIDDEN", Message: "no access", Path: []any{"organization", "projectV2", "items", "nodes", float64(7), "content"}},
+		{Type: "FORBIDDEN", Message: "no access node", Path: []any{"nodes", float64(3)}},
+	}
+	if fatal := fatalGraphErrors(errs); len(fatal) != 0 {
+		t.Fatalf("expected per-item content errors to be tolerated, got %d fatal", len(fatal))
+	}
+
+	withTopLevel := append(errs, graphQLError{Type: "NOT_FOUND", Message: "project gone", Path: []any{"organization", "projectV2"}})
+	if fatal := fatalGraphErrors(withTopLevel); len(fatal) != 1 || fatal[0].Message != "project gone" {
+		t.Fatalf("expected the top-level error to remain fatal, got %+v", fatal)
 	}
 }
 

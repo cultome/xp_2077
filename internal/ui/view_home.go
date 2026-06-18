@@ -34,8 +34,30 @@ func (m AppModel) viewHome() string {
 	lines = append(lines, m.styles.Panel.Render(m.userTable.View()))
 	lines = append(lines, "")
 	lines = append(lines, m.styles.Footer.Render("TAB:f0cus  ENTER:0k  UP/DOWN:n4v  ESC:b4ck  Q:qu1t"))
+	if summary := m.extractionSummaryLine(); summary != "" {
+		lines = append(lines, summary)
+	}
 	lines = append(lines, m.styles.Subtle.Render(terminalTicker(m.frame, "r34dy")))
 	return m.screen(lines)
+}
+
+// extractionSummaryLine reports cards that the last extraction omitted. Issue
+// cards skipped for lack of repo access are flagged as a warning (potential lost
+// tasks); non-issue cards (PRs/drafts) are reported as a neutral note.
+func (m AppModel) extractionSummaryLine() string {
+	if !m.extractionRan {
+		return ""
+	}
+	if m.skippedIssueCards > 0 {
+		return m.styles.Error.Render(fmt.Sprintf(
+			"[!] %d c4rd(s) d3 1ssu3 0m1t1d4s (s1n 4cc3s0 4l r3p0)  +%d n0-1ssu3",
+			m.skippedIssueCards, m.skippedOtherCards,
+		))
+	}
+	return m.styles.Subtle.Render(fmt.Sprintf(
+		"3xtr: 0 c4rds d3 1ssu3 0m1t1d4s  (%d n0-1ssu3 f1ltr4d4s)",
+		m.skippedOtherCards,
+	))
 }
 
 func (m AppModel) viewXPRanges() string {

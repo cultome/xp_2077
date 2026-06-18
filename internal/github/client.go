@@ -16,6 +16,65 @@ const (
 	githubAPIBase = "https://api.github.com"
 )
 
+// graphQLError mirrors a single entry of a GraphQL `errors` array.
+type graphQLError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+	Path    []any  `json:"path"`
+}
+
+// fatalGraphErrors returns only the errors that should abort the request.
+//
+// GitHub answers with partial `data` plus per-item field-level errors when the
+// token can't read a particular item (e.g. FORBIDDEN on the `content` of a
+// project card whose issue/PR lives in a repo the token lacks access to). Those
+// nodes come back with null content and are skipped by the callers, so they must
+// not fail the whole extraction. Errors scoped to an individual node/content are
+// treated as non-fatal; anything else (auth fully broken, project not found,
+// no path) is fatal.
+func fatalGraphErrors(errs []graphQLError) []graphQLError {
+	fatal := make([]graphQLError, 0, len(errs))
+	for _, e := range errs {
+		if isPerItemContentError(e) {
+			continue
+		}
+		fatal = append(fatal, e)
+	}
+	return fatal
+}
+
+func isPerItemContentError(e graphQLError) bool {
+	for _, segment := range e.Path {
+		if s, ok := segment.(string); ok && (s == "content" || s == "nodes") {
+			return true
+		}
+	}
+	return false
+}
+
+type projectNodeKind int
+
+const (
+	nodeReadableIssue projectNodeKind = iota
+	nodeInaccessibleIssue
+	nodeNonIssue
+)
+
+// classifyProjectNode decides how a project card should be treated. A card is a
+// readable issue when its content resolved to an Issue. Otherwise it is either
+// an issue we could not read (content is null/forbidden but the card type is
+// still ISSUE — e.g. the issue lives in a repo the token can't access) or a
+// non-issue card (pull request, draft, redacted) that we intentionally ignore.
+func classifyProjectNode(contentTypeName, nodeType string) projectNodeKind {
+	if contentTypeName == "Issue" {
+		return nodeReadableIssue
+	}
+	if strings.EqualFold(strings.TrimSpace(nodeType), "ISSUE") {
+		return nodeInaccessibleIssue
+	}
+	return nodeNonIssue
+}
+
 type Client struct {
 	httpClient *http.Client
 	token      string
@@ -28,16 +87,17 @@ func NewClient(token string) *Client {
 	}
 }
 
-func (c *Client) FetchProjectV2Issues(ctx context.Context, org string, projectNumber int) ([]ProjectItemRawRecord, []NormalizedIssue, error) {
+func (c *Client) FetchProjectV2Issues(ctx context.Context, org string, projectNumber int) ([]ProjectItemRawRecord, []NormalizedIssue, ProjectFetchStats, error) {
 	return c.FetchProjectV2IssuesWithProgress(ctx, org, projectNumber, nil)
 }
 
-func (c *Client) FetchProjectV2IssuesWithProgress(ctx context.Context, org string, projectNumber int, onPageFetched func(page int)) ([]ProjectItemRawRecord, []NormalizedIssue, error) {
+func (c *Client) FetchProjectV2IssuesWithProgress(ctx context.Context, org string, projectNumber int, onPageFetched func(page int)) ([]ProjectItemRawRecord, []NormalizedIssue, ProjectFetchStats, error) {
+	var stats ProjectFetchStats
 	if strings.TrimSpace(org) == "" {
-		return nil, nil, fmt.Errorf("organization is required")
+		return nil, nil, stats, fmt.Errorf("organization is required")
 	}
 	if projectNumber <= 0 {
-		return nil, nil, fmt.Errorf("project number must be > 0")
+		return nil, nil, stats, fmt.Errorf("project number must be > 0")
 	}
 
 	const query = `
@@ -51,6 +111,7 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
         }
         nodes {
           id
+          type
           updatedAt
           fieldValues(first: 50) {
             nodes {
@@ -108,6 +169,7 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
 
 	type graphNode struct {
 		ID          string    `json:"id"`
+		Type        string    `json:"type"`
 		UpdatedAt   time.Time `json:"updatedAt"`
 		FieldValues struct {
 			Nodes []projectFieldValueDTO `json:"nodes"`
@@ -132,9 +194,7 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
 				} `json:"projectV2"`
 			} `json:"organization"`
 		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
+		Errors []graphQLError `json:"errors"`
 	}
 
 	rawRecords := make([]ProjectItemRawRecord, 0, 128)
@@ -157,49 +217,54 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
 			"variables": variables,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("marshal graphql request: %w", err)
+			return nil, nil, stats, fmt.Errorf("marshal graphql request: %w", err)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubAPIBase+"/graphql", bytes.NewReader(body))
 		if err != nil {
-			return nil, nil, fmt.Errorf("build graphql request: %w", err)
+			return nil, nil, stats, fmt.Errorf("build graphql request: %w", err)
 		}
 		c.setCommonHeaders(req)
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, nil, fmt.Errorf("execute graphql request: %w", err)
+			return nil, nil, stats, fmt.Errorf("execute graphql request: %w", err)
 		}
 
 		responseBody, readErr := io.ReadAll(resp.Body)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
-			return nil, nil, fmt.Errorf("read graphql response: %w", readErr)
+			return nil, nil, stats, fmt.Errorf("read graphql response: %w", readErr)
 		}
 		if closeErr != nil {
-			return nil, nil, fmt.Errorf("close graphql response body: %w", closeErr)
+			return nil, nil, stats, fmt.Errorf("close graphql response body: %w", closeErr)
 		}
 		if resp.StatusCode >= 300 {
-			return nil, nil, fmt.Errorf("graphql request failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
+			return nil, nil, stats, fmt.Errorf("graphql request failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
 		}
 
 		var parsed graphResponse
 		if err := json.Unmarshal(responseBody, &parsed); err != nil {
-			return nil, nil, fmt.Errorf("decode graphql response: %w", err)
+			return nil, nil, stats, fmt.Errorf("decode graphql response: %w", err)
 		}
-		if len(parsed.Errors) > 0 {
-			return nil, nil, fmt.Errorf("graphql error: %s", parsed.Errors[0].Message)
+		if fatal := fatalGraphErrors(parsed.Errors); len(fatal) > 0 {
+			return nil, nil, stats, fmt.Errorf("graphql error: %s", fatal[0].Message)
 		}
 
 		items := parsed.Data.Organization.ProjectV2.Items
 		for _, node := range items.Nodes {
-			if node.Content.TypeName != "Issue" {
+			switch classifyProjectNode(node.Content.TypeName, node.Type) {
+			case nodeInaccessibleIssue:
+				stats.InaccessibleIssues++
+				continue
+			case nodeNonIssue:
+				stats.NonIssues++
 				continue
 			}
 			payload, err := json.Marshal(node)
 			if err != nil {
-				return nil, nil, fmt.Errorf("marshal project item payload: %w", err)
+				return nil, nil, stats, fmt.Errorf("marshal project item payload: %w", err)
 			}
 
 			projectFields := mapProjectFields(node.FieldValues.Nodes)
@@ -225,7 +290,7 @@ query ProjectItems($org: String!, $number: Int!, $cursor: String) {
 		page++
 	}
 
-	return rawRecords, normalized, nil
+	return rawRecords, normalized, stats, nil
 }
 
 func (c *Client) FetchRepoIssues(ctx context.Context, owner, repo string) ([]RepoIssueRawRecord, []NormalizedIssue, error) {
@@ -412,16 +477,14 @@ query IssueProjectFields($ids: [ID!]!) {
 				} `json:"projectItems"`
 			} `json:"nodes"`
 		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
+		Errors []graphQLError `json:"errors"`
 	}
 	var parsed graphResponse
 	if err := json.Unmarshal(responseBody, &parsed); err != nil {
 		return nil, fmt.Errorf("decode issue project fields graphql response: %w", err)
 	}
-	if len(parsed.Errors) > 0 {
-		return nil, fmt.Errorf("issue project fields graphql error: %s", parsed.Errors[0].Message)
+	if fatal := fatalGraphErrors(parsed.Errors); len(fatal) > 0 {
+		return nil, fmt.Errorf("issue project fields graphql error: %s", fatal[0].Message)
 	}
 
 	result := make(map[string]map[string]string, len(parsed.Data.Nodes))

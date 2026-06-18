@@ -36,7 +36,8 @@ type envCheckedMsg struct {
 }
 
 type extractionDoneMsg struct {
-	err error
+	err    error
+	result extract.Result
 }
 
 type xpRange struct {
@@ -87,6 +88,10 @@ type AppModel struct {
 	issueTask   domain.TaskXP
 	issueScroll int
 	skipExtract bool
+
+	extractionRan     bool
+	skippedIssueCards int // project ISSUE cards skipped because the repo wasn't accessible
+	skippedOtherCards int // PR/draft/redacted cards intentionally ignored
 }
 
 func NewAppModel(repo domain.Repository, skipExtract bool) AppModel {
@@ -207,6 +212,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.tracker != nil {
 			m.pipeState = m.tracker.State()
 		}
+		m.extractionRan = true
+		m.skippedIssueCards = typed.result.ProjectStats.InaccessibleIssues
+		m.skippedOtherCards = typed.result.ProjectStats.NonIssues
 		m.refreshLeaderboard()
 		m.route = routeHome
 		return m, nil
@@ -553,8 +561,8 @@ func checkEnvCmd(required []string) tea.Cmd {
 
 func runExtractionCmd(cfg extract.Config, tracker *extract.Tracker) tea.Cmd {
 	return func() tea.Msg {
-		_, err := extract.Run(context.Background(), cfg, tracker)
-		return extractionDoneMsg{err: err}
+		res, err := extract.Run(context.Background(), cfg, tracker)
+		return extractionDoneMsg{err: err, result: res}
 	}
 }
 

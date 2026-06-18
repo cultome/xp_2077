@@ -50,10 +50,11 @@ func (c Config) Validate() error {
 }
 
 type Result struct {
-	ProjectRaw []gh.ProjectItemRawRecord
-	RepoRaw    []gh.RepoIssueRawRecord
-	Normalized []gh.NormalizedIssue
-	Counts     store.SummaryCounts
+	ProjectRaw   []gh.ProjectItemRawRecord
+	RepoRaw      []gh.RepoIssueRawRecord
+	Normalized   []gh.NormalizedIssue
+	Counts       store.SummaryCounts
+	ProjectStats gh.ProjectFetchStats
 }
 
 type State struct {
@@ -119,7 +120,7 @@ func Run(ctx context.Context, cfg Config, tracker *Tracker) (Result, error) {
 	client := gh.NewClient(cfg.Token)
 	update(State{StageName: "fetch_project", StageIdx: 1, StageMax: stageMax, Progress: 2, Detail: "fetching project items"})
 
-	projectRaw, projectIssues, err := client.FetchProjectV2IssuesWithProgress(ctx, cfg.Owner, cfg.ProjectNumber, func(page int) {
+	projectRaw, projectIssues, projectStats, err := client.FetchProjectV2IssuesWithProgress(ctx, cfg.Owner, cfg.ProjectNumber, func(page int) {
 		progress := boundedProgress(2, 40, page)
 		update(State{
 			StageName: "fetch_project",
@@ -183,20 +184,25 @@ func Run(ctx context.Context, cfg Config, tracker *Tracker) (Result, error) {
 		return Result{}, fmt.Errorf("failed to read sqlite counts: %w", err)
 	}
 
+	completeDetail := "extraction complete"
+	if projectStats.InaccessibleIssues > 0 {
+		completeDetail = fmt.Sprintf("extraction complete (%d issue cards skipped: no repo access)", projectStats.InaccessibleIssues)
+	}
 	update(State{
 		StageName: "complete",
 		StageIdx:  stageMax,
 		StageMax:  stageMax,
 		Progress:  100,
-		Detail:    "extraction complete",
+		Detail:    completeDetail,
 		Done:      true,
 	})
 
 	return Result{
-		ProjectRaw: projectRaw,
-		RepoRaw:    repoRaw,
-		Normalized: allNormalized,
-		Counts:     counts,
+		ProjectRaw:   projectRaw,
+		RepoRaw:      repoRaw,
+		Normalized:   allNormalized,
+		Counts:       counts,
+		ProjectStats: projectStats,
 	}, nil
 }
 

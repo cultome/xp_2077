@@ -17,6 +17,18 @@ const (
 
 const specialTasksAlephPrefix = "[Special Tasks for Aleph] "
 
+// ProjectFetchStats summarizes project cards that were not ingested as issues
+// during a project fetch.
+type ProjectFetchStats struct {
+	// InaccessibleIssues counts ISSUE cards whose content the token could not
+	// read (typically the issue lives in a repo the token lacks access to).
+	// These are potential lost tasks worth surfacing to the user.
+	InaccessibleIssues int
+	// NonIssues counts cards intentionally ignored because they are not issues
+	// (pull requests, draft issues, redacted items).
+	NonIssues int
+}
+
 type ProjectItemRawRecord struct {
 	ProjectItemID      string
 	IssueNodeID        string
@@ -273,12 +285,18 @@ func parseProjectXPFields(fields map[string]string) (xpBase *float64, plannedSta
 	}
 
 	durationDays := endDate.Sub(startDate).Hours() / 24
-	if durationDays <= 0 {
+	if durationDays < 0 {
+		// end before start is corrupt data; a same-day plan (duration 0) is valid.
 		return nil, nil, nil, nil, nil
 	}
 
 	deltaDays := endDate.Sub(realDate).Hours() / 24
-	deltaPct := math.Abs(deltaDays) / durationDays
+	// A zero-length plan has no ratio to scale by, so credit the base XP
+	// instead of dropping the task entirely.
+	deltaPct := 0.0
+	if durationDays > 0 {
+		deltaPct = math.Abs(deltaDays) / durationDays
+	}
 	finalXP := parsedXP
 	if deltaDays > 0 {
 		finalXP = parsedXP + (parsedXP * deltaPct)
