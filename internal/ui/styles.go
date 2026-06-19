@@ -9,10 +9,17 @@ type styles struct {
 	Error        lipgloss.Style
 	Success      lipgloss.Style
 	Accent       lipgloss.Style
+	Link         lipgloss.Style
 	Panel        lipgloss.Style
 	FocusedInput lipgloss.Style
 	BlurInput    lipgloss.Style
 	Footer       lipgloss.Style
+
+	// XP bar tiers (filled segments), reused by the leaderboard.
+	BarStandard    lipgloss.Style
+	BarOverclocked lipgloss.Style
+	BarBreaker     lipgloss.Style
+	BarEmpty       lipgloss.Style
 }
 
 func newStyles() styles {
@@ -21,6 +28,11 @@ func newStyles() styles {
 	amberBright := "#FFB347"
 	amberDim := "#A9681F"
 	amberDeep := "#4A2C08"
+
+	// Neon accents layered on the amber base for semantics only.
+	neonRed := "#FF2A6D"
+	neonGreen := "#00FF9C"
+	neonCyan := "#00F0FF"
 
 	return styles{
 		AppFrame: lipgloss.NewStyle().
@@ -34,14 +46,16 @@ func newStyles() styles {
 		Subtle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(amberDim)),
 		Error: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(amberBright)).
+			Foreground(lipgloss.Color(neonRed)).
 			Bold(true),
 		Success: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(amber)).
+			Foreground(lipgloss.Color(neonGreen)).
 			Bold(true),
 		Accent: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(amber)).
 			Bold(true),
+		Link: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(neonCyan)),
 		Panel: lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(lipgloss.Color(amberDeep)).
@@ -57,5 +71,10 @@ func newStyles() styles {
 			Padding(0, 1),
 		Footer: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(amber)),
+
+		BarStandard:    lipgloss.NewStyle().Foreground(lipgloss.Color(amber)),
+		BarOverclocked: lipgloss.NewStyle().Foreground(lipgloss.Color(neonCyan)),
+		BarBreaker:     lipgloss.NewStyle().Foreground(lipgloss.Color(neonGreen)).Bold(true),
+		BarEmpty:       lipgloss.NewStyle().Foreground(lipgloss.Color(amberDeep)),
 	}
 }

@@ -3,14 +3,18 @@ package ui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Quit    key.Binding
-	Tab     key.Binding
-	Enter   key.Binding
-	Up      key.Binding
-	Down    key.Binding
-	Back    key.Binding
-	Retry   key.Binding
-	Refresh key.Binding
+	Quit      key.Binding
+	Tab       key.Binding
+	Enter     key.Binding
+	Up        key.Binding
+	Down      key.Binding
+	Back      key.Binding
+	Retry     key.Binding
+	Refresh   key.Binding
+	Sort      key.Binding
+	Preset    key.Binding
+	Open      key.Binding
+	ReExtract key.Binding
 }
 
 func newKeyMap() keyMap {
@@ -46,6 +50,22 @@ func newKeyMap() keyMap {
 		Refresh: key.NewBinding(
 			key.WithKeys("ctrl+r"),
 			key.WithHelp("ctrl+r", "refresh"),
+		),
+		Sort: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "sort"),
+		),
+		Preset: key.NewBinding(
+			key.WithKeys("p"),
+			key.WithHelp("p", "date preset"),
+		),
+		Open: key.NewBinding(
+			key.WithKeys("o"),
+			key.WithHelp("o", "open in browser"),
+		),
+		ReExtract: key.NewBinding(
+			key.WithKeys("ctrl+e"),
+			key.WithHelp("ctrl+e", "re-extract"),
 		),
 	}
 }

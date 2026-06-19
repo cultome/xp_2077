@@ -36,7 +36,7 @@ func (m AppModel) viewIssueDetail() string {
 	}
 	lines = append(lines, window...)
 	lines = append(lines, "")
-	lines = append(lines, m.styles.Footer.Render(fmt.Sprintf("%s  ESC:b4ck t0 t4sks  Q:qu1t", scrollHint)))
+	lines = append(lines, m.styles.Footer.Render(fmt.Sprintf("%s  O:4br1r-url  ESC:b4ck t0 t4sks  Q:qu1t", scrollHint)))
 	lines = append(lines, m.styles.Subtle.Render(terminalTicker(m.frame, "gh issue view")))
 
 	return m.screen(lines)
@@ -71,7 +71,7 @@ func (m AppModel) issueDetailContentLines() []string {
 			fmt.Sprintf("Implementacion Inicio: %s", formatDateOrDash(task.PlannedDate)),
 			fmt.Sprintf("Implementacion Fin: %s", formatDateOrDash(task.PlannedEndDate)),
 			fmt.Sprintf("Implementacion Fin Real: %s", formatDateOrDash(task.RealDate)),
-			fmt.Sprintf("url: %s", task.IssueURL),
+			fmt.Sprintf("url: %s", m.styles.Link.Render(task.IssueURL)),
 		}, "\n")),
 		"",
 		m.styles.Subtle.Render("B0DY"),

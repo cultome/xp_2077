@@ -34,12 +34,18 @@ func (m AppModel) viewSplash() string {
 	stageFrames := []int{4, 7, 3, 8, 5, 8}
 	doneCount, activeIdx, stageElapsed, stageTotal := bootStageProgress(m.frame, stageFrames)
 
+	// Logo starts heavily corrupted and resolves as the boot progresses.
+	glitchAmt := 0
+	if progress < 100 {
+		glitchAmt = (100-progress)/12 + 1
+	}
+
 	lines := []string{
 		title,
 		"",
-		centeredLogo(m.width, m.styles.Accent),
+		centeredLogo(m.width, m.styles.Accent, glitchAmt, m.frame),
 		"",
-		centeredText(m.width, m.styles.Subtle, "0p3r4t1ng syst3m // b00t s3qu3nc3"),
+		centeredText(m.width, m.styles.Subtle, decryptReveal("0p3r4t1ng syst3m // b00t s3qu3nc3", progress)),
 		"",
 		m.styles.Subtle.Render("V_4.0.2-STABLE"),
 	}
@@ -73,7 +79,7 @@ func (m AppModel) viewSplash() string {
 	return m.screen(lines)
 }
 
-func centeredLogo(width int, style lipgloss.Style) string {
+func centeredLogo(width int, style lipgloss.Style, glitchAmt, frame int) string {
 	logo := []string{
 		"██╗    ██╗███████╗ █████╗ ██╗   ██╗███████╗██████╗ ",
 		"██║    ██║██╔════╝██╔══██╗██║   ██║██╔════╝██╔══██╗",
@@ -81,6 +87,11 @@ func centeredLogo(width int, style lipgloss.Style) string {
 		"██║███╗██║██╔══╝  ██╔══██║╚██╗ ██╔╝██╔══╝  ██╔══██╗",
 		"╚███╔███╔╝███████╗██║  ██║ ╚████╔╝ ███████╗██║  ██║",
 		" ╚══╝╚══╝ ╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝",
+	}
+	if glitchAmt > 0 {
+		for i := range logo {
+			logo[i] = glitch(logo[i], frame+i, glitchAmt)
+		}
 	}
 	block := style.Render(strings.Join(logo, "\n"))
 	return lipgloss.PlaceHorizontal(max(20, width-4), lipgloss.Center, block)
@@ -96,23 +107,6 @@ func splashCopyright(m AppModel) string {
 		m.styles.Subtle,
 		"© 2077 // ΔLΞPH CØRP // 4LL R1GHT5 R353RV3D",
 	)
-}
-
-func bootStage(frame int, stageFrames []int) (doneCount int, activeIdx int) {
-	if frame < 0 {
-		return 0, 0
-	}
-	elapsed := frame
-	done := 0
-	for idx, stage := range stageFrames {
-		if elapsed >= stage {
-			elapsed -= stage
-			done++
-			continue
-		}
-		return done, idx
-	}
-	return len(stageFrames), len(stageFrames) - 1
 }
 
 const subsystemDotsWidth = 24

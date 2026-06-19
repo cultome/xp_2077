@@ -44,7 +44,7 @@ func TestAppRouteTransitions(t *testing.T) {
 func TestDetailToIssueNavigation(t *testing.T) {
 	m := NewAppModel(mock.NewRepository(2077), false)
 	m.route = routeHome
-	m.focusIndex = 2
+	m.focusIndex = homeFocusTable
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(AppModel)

@@ -114,8 +114,17 @@ El issue 1740 (repo `alliance`) y ~27 tareas que antes no se veían ahora sí ap
 - Tests nuevos en `types_test.go` (classify, fatalGraphErrors, same-day, duración negativa).
 - Limpieza de `Makefile` y `README.md`: removidas las referencias al `cmd/github_extract`
   eliminado; agregado target `run-skip-extract`.
+- TUI cyberpunk (ámbar + acentos neón): paleta semántica en `styles.go`
+  (Error rojo `#FF2A6D`, Success verde `#00FF9C`, Link cian `#00F0FF`); helpers en
+  `animation.go` (`xpBar`/`xpFillCount`, `glitch`, `decryptReveal`, `scanline`, `hudClock`);
+  HUD global en `screen()`; leaderboard custom con barras de XP por tier en `view_home.go`
+  (la `userTable` queda solo como estado de cursor); glitch/reveal en headers y splash;
+  filtro de usuario, orden (`s`), presets de fecha (`p`), re-extraer (`ctrl+e`), abrir issue
+  en navegador (`o`, `openurl.go`). Tests en `internal/ui/ui_extras_test.go`.
 
 **Pendientes / deuda conocida:**
+- La tabla de la vista DETALLE (`detailTable`) hace wrap de borde cuando es más ancha que el
+  frame (preexistente, no relacionado con el HUD) → ajustar anchos de columnas/Panel.
 - Ruta `repo_issue` está fija a `advance`; issues `[Special Tasks for Aleph]` en otros repos
   no reciben la regla de XP de repo (sí la de proyecto si tienen los campos).
 - UPSERT no purga issues borrados/movidos → considerar limpieza/marcado de obsoletos.
