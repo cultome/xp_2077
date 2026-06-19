@@ -1,16 +1,14 @@
 # xp_2077
 
-CLI/TUI para visualizar ranking de XP.  
-Incluye un script independiente para validar extracción de datos desde GitHub antes de integrarlo al UI.
+TUI para visualizar un ranking de **XP** por persona, calculado a partir de tareas en GitHub.
+Al arrancar, la app extrae datos de GitHub a SQLite y luego muestra el leaderboard.
 
-## Script de extracción GitHub a SQLite
-
-Este script extrae datos desde:
+## Qué extrae
 
 - GitHub Project v2 (items cuyo `content` sea `Issue`)
 - Issues de un repositorio (filtra pull requests)
 
-Luego persiste:
+Persiste:
 
 - payload crudo de Project v2 en `project_items_raw`
 - payload crudo de repo issues en `repo_issues_raw`
@@ -22,62 +20,52 @@ Luego persiste:
   - `real_end_date`
   - `xp_final`
 
-### Regla XP persistida
+### Reglas XP persistidas
 
-`xp_final` se calcula solo cuando existen los 4 campos de Project v2:
+Una tarea solo aparece en el ranking si tiene `xp_final` **y** `real_end_date`.
+`xp_final` se calcula por una de dos reglas según el origen:
 
-- `XP`
-- `fecha programada de inicio`
-- `fecha programada de fin`
-- `fecha real de fin`
-
-Fórmula:
+**Project v2** — requiere los 4 campos (`XP`, `fecha programada de inicio`,
+`fecha programada de fin`, `fecha real de fin`; aceptan alias `Implementacion *`):
 
 - `delta_days = planned_end_date - real_end_date`
 - `delta_pct = abs(delta_days) / (planned_end_date - planned_start_date)`
 - si `delta_days > 0`: `xp_base + (xp_base * delta_pct)`
 - si `delta_days < 0`: `xp_base - (xp_base * delta_pct)`
-- si `delta_days == 0`: `xp_base`
+- si `delta_days == 0` (o plan de un solo día): `xp_base`
 - redondeo a 1 decimal y clamp mínimo a `0`
+
+**Repo issue** — solo si el título empieza con `[Special Tasks for Aleph] `, el `Status`
+es `done`, y existen `Story Points` + `Priority` (P0=2, P1=1.5, P2=1) + `Due Date`:
+
+- `xp_final = round(story_points * multiplier, 1)`
 
 ### Variables de entorno
 
-- `GITHUB_TOKEN` (requerida)
+- `GITHUB_TOKEN` (requerida) — debe poder leer **todos** los repos que el Project referencia;
+  si no, esos issues se omiten (se reportan en Home).
 - `OUTPUT_DB` (opcional, default `./tmp/github_extract.db`)
 
-El extractor usa configuración fija de GitHub:
+Configuración fija de GitHub (en código, `internal/extract/extract.go`):
 
 - owner/org: `aleph-ri`
 - repo: `advance`
 - project number: `12`
 
-### Ejecutar
+## Ejecutar
 
 ```bash
-go run ./cmd/github_extract \
-  -owner "aleph-ri" \
-  -repo "advance" \
-  -project "12" \
-  -db "${OUTPUT_DB:-./tmp/github_extract.db}"
+go run .            # extrae de GitHub y abre el leaderboard
 ```
 
-También puedes omitir esos flags y usar los defaults fijos en código.
+Durante la carga se muestra el progreso de extracción. En Home se reporta cuántas cards de
+issue se omitieron por falta de acceso al repo.
 
-## Ejecutar cliente TUI sin extracción
-
-Si ya tienes datos en SQLite y quieres abrir el cliente sin volver a consultar GitHub:
+### Sin extracción (usar SQLite existente)
 
 ```bash
 go run . -skip-extract
 ```
 
-Con `-skip-extract` la app omite validaciones de variables GitHub y salta directo al Home usando los datos existentes en `OUTPUT_DB`.
-
-### Validación esperada
-
-El script imprime un resumen con:
-
-- total de registros extraídos por fuente
-- total persistido por tabla en SQLite
-- cantidad de `issue_node_id` duplicados entre fuentes
-- rango temporal de `updated_at` detectado
+Con `-skip-extract` la app omite la validación de variables de GitHub y salta directo al Home
+usando los datos existentes en `OUTPUT_DB`.

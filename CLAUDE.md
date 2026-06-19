@@ -23,10 +23,9 @@ go test ./internal/github/ -run TestClassifyProjectNode  # un solo test (por nom
 go vet ./... && gofmt -l internal/ main.go               # estática + archivos mal formateados
 ```
 
-`make build` / `make test` / `make fmt` / `make run` también funcionan.
-**Cuidado:** los targets `make build-extractor` / `make run-extractor` y el bloque del README
-`go run ./cmd/github_extract` están **obsoletos** — ese comando se eliminó (commit 28e89ce).
-Hoy la extracción vive dentro de la app (`main.go` → `internal/ui` → `internal/extract`).
+`make build` / `make run` / `make run-skip-extract` / `make test` / `make fmt` también funcionan.
+La extracción vive **dentro de la app** (`main.go` → `internal/ui` → `internal/extract`); ya no
+existe el comando `cmd/github_extract` (se eliminó en commit 28e89ce).
 
 ### Variables de entorno
 
@@ -113,10 +112,10 @@ El issue 1740 (repo `alliance`) y ~27 tareas que antes no se veían ahora sí ap
   duración negativa).
 - UI: contador de cards omitidas en Home (`view_home.go: extractionSummaryLine`).
 - Tests nuevos en `types_test.go` (classify, fatalGraphErrors, same-day, duración negativa).
+- Limpieza de `Makefile` y `README.md`: removidas las referencias al `cmd/github_extract`
+  eliminado; agregado target `run-skip-extract`.
 
 **Pendientes / deuda conocida:**
-- Makefile (`build-extractor`/`run-extractor`) y README referencian el `cmd/github_extract`
-  eliminado → limpiar o regenerar.
 - Ruta `repo_issue` está fija a `advance`; issues `[Special Tasks for Aleph]` en otros repos
   no reciben la regla de XP de repo (sí la de proyecto si tienen los campos).
 - UPSERT no purga issues borrados/movidos → considerar limpieza/marcado de obsoletos.
