@@ -69,3 +69,19 @@ go run . -skip-extract
 
 Con `-skip-extract` la app omite la validación de variables de GitHub y salta directo al Home
 usando los datos existentes en `OUTPUT_DB`.
+
+## Compilar
+
+```bash
+make build          # binario optimizado en bin/xp_2077
+```
+
+`make build` compila con `CGO_ENABLED=0 -trimpath -ldflags="-s -w"`: binario **estático**
+(no requiere glibc; `modernc.org/sqlite` es SQLite puro en Go), sin símbolos ni DWARF y sin
+rutas locales. Resulta ~31% más chico que un `go build` plano (~11 MB vs ~16 MB).
+
+Como CGO está desactivado, puedes cross-compilar sin toolchain de C:
+
+```bash
+GOOS=darwin GOARCH=arm64 make build   # binario para macOS Apple Silicon
+```

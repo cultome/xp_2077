@@ -17,7 +17,7 @@ el ranking. El contexto de GitHub está **fijo en código** (`internal/extract/e
 ```bash
 go run .                 # arranca la TUI (extrae de GitHub y muestra el leaderboard)
 go run . -skip-extract   # arranca usando SOLO el SQLite existente (no consulta GitHub)
-go build -o bin/xp_2077 . # compila la app
+make build               # compila optimizado (estatico, -s -w -trimpath) → bin/xp_2077
 go test ./...            # toda la suite
 go test ./internal/github/ -run TestClassifyProjectNode  # un solo test (por nombre/regex)
 go vet ./... && gofmt -l internal/ main.go               # estática + archivos mal formateados
